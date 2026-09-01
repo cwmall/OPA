@@ -3,7 +3,7 @@ numpy==2.5.1
 scipy==1.18.0
 matplotlib==3.11.1
 PyQt6==6.11.0
-skyfield==1.54
+skyfield==1.55
 spiceypy==8.2.0
 cryptography==50.0.1
 argon2-cffi==25.1.0
