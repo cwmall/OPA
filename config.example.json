@@ -1,0 +1,15 @@
+{
+  "active_module": 0,
+  "active_profile_id": "synthetic_geo_demo",
+  "active_tab": 0,
+  "config_version": 4,
+  "eop_enabled": false,
+  "integrator_atol": "1e-12",
+  "integrator_max_step": 300,
+  "integrator_rtol": "1e-11",
+  "language": "en",
+  "theme": "normal",
+  "validation_minutes": 60,
+  "window_geometry": null,
+  "window_maximized": false
+}

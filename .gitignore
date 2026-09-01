@@ -1,0 +1,81 @@
+# Python and test caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments and builds
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE and OS state
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Per-user application state
+opa_config.json
+config.json
+config.json.bak
+config.json.tmp
+config.local.json
+profiles/
+tle/
+diagnostics/
+logs/
+outputs/
+reports/
+references/
+.codex_tmp/
+tmp/
+temp/
+
+# Projects and generated scientific exports
+*.opa
+*.csv.tmp
+*.json.tmp
+
+# Admin enrollment, packages, and every form of secret/key material
+.env
+.env.*
+!.env.example
+*.opa-admin
+*.enrollment.json
+admin_enrollment.json
+*.private.json
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+private/
+secrets/
+admin-packages/
+quarantine/
+
+# Office/archive artifacts are not release inputs
+*.zip
+*.7z
+*.rar
+*.docx
+*.xlsx
+*.pptx
+*.pdf
+
+# SPICE kernels and public scientific data are intentionally NOT ignored.

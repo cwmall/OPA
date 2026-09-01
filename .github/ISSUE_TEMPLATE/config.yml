@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: "mailto:jamal7damirov@gmail.com?cc=altay1yusifov@gmail.com&subject=OPA%20Security%20Report"
+    about: Report vulnerabilities privately; do not open a public issue.
