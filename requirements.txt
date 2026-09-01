@@ -1,6 +1,6 @@
 # Verified OPA 2.43.5 release environment (Python 3.14)
 numpy==2.5.1
-scipy==1.18.0
+scipy==1.18.1
 matplotlib==3.11.1
 PyQt6==6.11.0
 skyfield==1.54
