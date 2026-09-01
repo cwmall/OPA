@@ -1,0 +1,33 @@
+{
+  "schema": "opa-admin-content/v2",
+  "profiles": [],
+  "reference_datasets": [
+    {
+      "id": "synthetic-admin-reference",
+      "label": "SYNTHETIC ADMIN REFERENCE",
+      "epoch_utc": "2031-01-01T00:00:00+00:00",
+      "step_seconds": 60,
+      "source_frame": "J2000/ICRF",
+      "scenarios": [
+        {
+          "name": "SYNTHETIC EARTH",
+          "include_moon": false,
+          "include_srp": false,
+          "states": [
+            [7100.0, 0.0, 0.0, 0.0, 7.4, 1.0],
+            [7099.9, 444.0, 60.0, -0.46, 7.38, 0.99]
+          ]
+        }
+      ]
+    }
+  ],
+  "eclipse_reference_datasets": [],
+  "orbit_determination_datasets": [],
+  "admin_modules": [
+    {
+      "id": "synthetic-admin-workspace",
+      "label": "SYNTHETIC ADMIN WORKSPACE",
+      "description": "Fictional data-only demonstration content. It is not derived from an operator or real spacecraft."
+    }
+  ]
+}
