@@ -74,7 +74,7 @@ Continuous integration runs the release checks on Windows and Ubuntu. See [headl
 
 ## Settings and private extensions
 
-Live configuration is stored under Qt's per-user application configuration directory, not in this repository. Writes are atomic and schema-validated. Admin unlock state, passwords, package paths, private profiles, and recent private projects are never persisted in ordinary configuration.
+Live configuration is stored in Qt s per-user application configuration directory rather than in the repository. All configuration changes are written atomically and validated against the defined schema. Sensitive information including admin unlock status, passwords, package locations, private profiles, and recently accessed private projects is not stored in the standard configuration files.
 
 The optional `ADMIN ACCESS` system accepts only an externally provisioned, device-bound, signed and encrypted data package. The repository includes a fictional content example, but no signing key, device enrollment, password, or usable private package. See [Admin extensions](docs/ADMIN_EXTENSIONS.md) and the [threat model](docs/THREAT_MODEL.md).
 
