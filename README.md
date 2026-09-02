@@ -120,4 +120,4 @@ Dependencies and scientific data retain their own licenses and terms. OPA uses t
 
 ## Publication status
 
-The project license, author attribution, PySide6 licensing route, scientific-data provenance, and automated release checks are configured. Keep the repository private until the remaining author attestations and GitHub security settings in `docs/PUBLICATION_CHECKLIST.md` have been completed.
+The project license, author attribution, PySide6 licensing route, scientific-data provenance, author attestations, history cleanup, and automated release checks are complete. The remaining post-publication GitHub checks are tracked in `docs/PUBLICATION_CHECKLIST.md`.
