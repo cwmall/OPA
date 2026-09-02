@@ -17,8 +17,8 @@ By signing below, each author confirms that:
 
 ## Signatures
 
-- [ ] Jamal Damirov — confirmation date: `YYYY-MM-DD`
-- [ ] Altay Yusifov — confirmation date: `YYYY-MM-DD`
+- [x] Jamal Damirov — confirmation date: `2026-09-02`
+- [x] Altay Yusifov — confirmation date: `2026-09-02`
 
 If either author cannot make every statement above, keep the repository
 private and remove or replace the affected contribution before publication.
