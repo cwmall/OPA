@@ -15,7 +15,7 @@ from pathlib import Path
 import shutil
 from typing import Any, Mapping
 
-from PyQt6.QtCore import QStandardPaths
+from PySide6.QtCore import QStandardPaths
 
 
 CONFIG_SCHEMA_VERSION = 4

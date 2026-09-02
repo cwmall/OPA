@@ -8,9 +8,9 @@ import os
 import numpy as np
 import matplotlib.dates as mdates
 from matplotlib.figure import Figure
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QAction, QDoubleValidator, QKeySequence
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QAction, QDoubleValidator, QKeySequence
+from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,

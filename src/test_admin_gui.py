@@ -8,7 +8,7 @@ _MODULE_TEST_ROOT = Path(tempfile.mkdtemp(prefix="opa-admin-gui-test-"))
 os.environ["OPA_CONFIG_PATH"] = str(_MODULE_TEST_ROOT / "config.json")
 os.environ["OPA_PROFILE_DIR"] = str(_MODULE_TEST_ROOT / "profiles")
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 

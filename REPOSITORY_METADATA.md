@@ -4,8 +4,8 @@ Use the following values when creating or configuring the GitHub repository.
 
 - **Repository name:** `OPA`
 - **Display name:** OPA — Orbital Perturbation Analysis
-- **Version:** 2.43.5
-- **Description:** Scientific desktop application for satellite orbit analysis, perturbation modelling, propagation, and visualization with Python, PyQt6, and NASA SPICE.
+- **Version:** 2.43.6
+- **Description:** Scientific desktop application for satellite orbit analysis, perturbation modelling, propagation, and visualization with Python, PySide6, and NASA SPICE.
 - **License:** Apache License 2.0
 - **Minimum Python:** 3.12
 
@@ -20,7 +20,7 @@ scientific-computing
 scientific-visualization
 nasa-spice
 spiceypy
-pyqt6
+pyside6
 python
 ```
 

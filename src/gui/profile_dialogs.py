@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
@@ -407,8 +407,8 @@ class SatelliteProfileEditor(QDialog):
 class SatelliteProfileManager(QDialog):
     """Create, import, export and activate satellite profiles."""
 
-    profile_activated = pyqtSignal(str)
-    profiles_changed = pyqtSignal()
+    profile_activated = Signal(str)
+    profiles_changed = Signal()
 
     def __init__(self, store: SatelliteProfileStore, active_profile_id: str, parent=None):
         super().__init__(parent)

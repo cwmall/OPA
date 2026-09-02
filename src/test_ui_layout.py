@@ -7,8 +7,8 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QApplication, QScrollArea
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QApplication, QScrollArea
 
 from gui.main_window import (
     APP_ICON_PATH,
@@ -101,12 +101,13 @@ class ResponsiveLayoutTests(unittest.TestCase):
             self.window.settings_overlay.admin_nav_button.text(), "ADMIN ACCESS"
         )
 
-    def test_established_opa_brand_assets_load_in_the_header(self):
-        for asset_path in (APP_ICON_PATH, APP_LOGO_PATH, HERO_BACKGROUND_DARK_PATH):
+    def test_public_svg_brand_assets_and_code_drawn_header_load(self):
+        for asset_path in (APP_ICON_PATH, APP_LOGO_PATH):
             with self.subTest(asset=Path(asset_path).name):
                 self.assertTrue(Path(asset_path).is_file())
         self.assertFalse(self.window.hero_logo_pixmap.isNull())
-        self.assertFalse(self.window.hero_card._background.isNull())
+        self.assertEqual(HERO_BACKGROUND_DARK_PATH, "")
+        self.assertTrue(self.window.hero_card._background.isNull())
 
 
 if __name__ == "__main__":

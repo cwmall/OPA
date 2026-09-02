@@ -9,7 +9,7 @@ The current dependency template lists:
 - NumPy
 - SciPy
 - Matplotlib
-- PyQt6
+- PySide6
 - Skyfield
 - SpiceyPy
 - cryptography
@@ -17,11 +17,19 @@ The current dependency template lists:
 
 Before publishing a source or binary release, generate and review a complete dependency inventory for the resolved environment and include every notice or license required by the versions actually distributed.
 
-## PyQt6
+The verified source-release environment is recorded in `DEPENDENCY_INVENTORY.md`.
 
-Riverbank Computing provides PyQt6 under GNU GPL v3 and a commercial license. A distributor using the freely available GPL build must comply with the GPL obligations applicable to the combined application. A party that cannot distribute compatibly with the GPL should obtain appropriate commercial licensing or seek qualified legal advice.
+## PySide6 and Qt
 
-OPA's Apache License 2.0 describes the license selected by the OPA copyright holders; it does not grant rights in PyQt6 or override PyQt6's license.
+The Qt Company provides Qt for Python/PySide6 under LGPLv3/GPLv3 community licenses and a commercial license. OPA uses the community PySide6 wheel and dynamically loaded Qt libraries. The OPA source remains under Apache License 2.0; PySide6, Shiboken6, and Qt retain their own terms.
+
+A source-only checkout installs PySide6 separately from PyPI and does not redistribute Qt binaries in this repository. A binary distributor must review the exact bundled Qt modules, provide the required notices and license texts, permit relinking/replacement as required by LGPLv3, and avoid imposing conflicting restrictions.
+
+Official licensing references:
+
+- <https://doc.qt.io/qtforpython-6/>
+- <https://doc.qt.io/qtforpython-6/licenses.html>
+- <https://doc.qt.io/qtforpython-6/overviews/qtdoc-lgpl.html>
 
 ## NASA SPICE and kernels
 
@@ -31,9 +39,9 @@ Do not imply endorsement by NASA, JPL, NAIF, a kernel producer, or any dependenc
 
 ## Release checklist
 
-- [ ] Resolve and record the exact dependency versions.
-- [ ] Inventory transitive dependencies and bundled Qt components.
+- [x] Resolve and record the exact source-environment dependency versions.
+- [x] Inventory transitive dependencies for the source-release environment.
 - [ ] Preserve required licenses and notices.
-- [ ] Confirm the selected PyQt6 licensing path.
-- [ ] Confirm redistribution rights for every kernel and dataset.
-- [ ] Update `DATA_PROVENANCE.md` and this file.
+- [x] Use the PySide6 LGPLv3/GPLv3 community licensing route for source publication.
+- [x] Confirm redistribution rights for every bundled kernel and dataset.
+- [x] Update `DATA_PROVENANCE.md` and this file.

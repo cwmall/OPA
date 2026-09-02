@@ -27,7 +27,7 @@ Activate the virtual environment using the command appropriate for your operatin
 python run_opa.py
 ```
 
-Dependency versions are temporarily unpinned. If a change depends on a particular version, explain the constraint in the pull request and update the dependency documentation only after testing the complete supported environment.
+Dependency versions are pinned to the verified release environment. If a change needs a different version, explain the constraint in the pull request and update the dependency inventory only after testing the complete supported environment.
 
 ## Branches and commits
 

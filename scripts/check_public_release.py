@@ -62,6 +62,8 @@ def load_external_denylist(path: str | None) -> tuple[str, ...]:
 def scan(denylist: tuple[str, ...]) -> list[str]:
     problems: list[str] = []
     for directory in ROOT.rglob("*"):
+        if any(part in SKIPPED_DIRECTORY_NAMES for part in directory.parts):
+            continue
         if directory.is_dir() and directory.name.casefold() in FORBIDDEN_DIRECTORY_NAMES:
             problems.append(f"forbidden generated/private directory: {directory.relative_to(ROOT)}")
     for path in iter_public_files():

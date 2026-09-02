@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use OPA in research, software, a report, or a presentation, please cite it using this metadata."
 title: "OPA: Orbital Perturbation Analysis"
 type: software
-version: "2.43.5"
+version: "2.43.6"
 license: Apache-2.0
 authors:
   - family-names: Damirov
@@ -18,4 +18,4 @@ keywords:
   - orbit propagation
   - scientific visualization
   - NASA SPICE
-  - PyQt6
+  - PySide6

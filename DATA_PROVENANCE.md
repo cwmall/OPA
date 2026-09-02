@@ -17,14 +17,14 @@ Official source and usage information:
 
 ## Assets
 
-The public mark `assets/opa_public_mark.svg` and Retro control SVGs are original repository-native geometry. The application owner selected the established generic OPA emblem and mission-banner raster artwork for the product identity; these files contain no operator name or embedded text metadata. Their original authorship and redistribution grant must be confirmed before the repository becomes public.
+The public mark `assets/opa_public_mark.svg` and Retro control SVGs are original repository-native geometry. OPA 2.43.6 uses the SVG mark directly and draws the mission header in application code. The earlier unverified raster emblem and mission banner are not release assets and must be removed from the public branch and its published history.
 
 ## Python dependencies
 
-Versions are pinned in `requirements.txt`. Review their upstream licenses before binary redistribution. In particular, Riverbank states that PyQt6 is dual-licensed under GPLv3 and a commercial license; PyQt6 is not LGPL. Anyone distributing the combined application must use a compatible licensing route.
+Versions are pinned in `requirements.txt`. OPA uses PySide6, the official Qt for Python bindings, under the LGPLv3/GPLv3 community licensing route. Source-only publication does not bundle its wheels. Anyone distributing binaries must provide the applicable Qt/PySide6 notices and satisfy the LGPL requirements for the exact bundled components.
 
 ## Project licensing decision
 
-The OPA copyright holders selected Apache License 2.0 for OPA source code and identified Jamal Damirov and Altay Yusifov in the repository `NOTICE`. This project-level license does not relicense PyQt6, Qt, NASA SPICE materials, kernels, IERS/USNO products, or other third-party dependencies and data.
+The OPA copyright holders selected Apache License 2.0 for OPA source code and identified Jamal Damirov and Altay Yusifov in the repository `NOTICE`. This project-level license does not relicense PySide6, Qt, NASA SPICE materials, kernels, IERS/USNO products, or other third-party dependencies and data.
 
 Before making the repository public or distributing a binary application, complete the ownership and third-party licensing checks in `docs/PUBLICATION_CHECKLIST.md` and `THIRD_PARTY_NOTICES.md`.

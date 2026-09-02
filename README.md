@@ -1,10 +1,10 @@
 # OPA — Orbital Perturbation Analysis
 
-OPA is a Python/PyQt6 desktop engineering application for satellite orbit analysis, perturbation modelling, numerical propagation, eclipse geometry, GEO station-keeping indicators, reference comparison, and scientific visualization.
+OPA is a Python/PySide6 desktop engineering application for satellite orbit analysis, perturbation modelling, numerical propagation, eclipse geometry, GEO station-keeping indicators, reference comparison, and scientific visualization.
 
 The desktop product is presented as **Orbital Perturbation Analyzer — Public Edition**. This repository contains the public, synthetic-data edition of the joint OPA project by **Jamal Damirov** and **Altay Yusifov**.
 
-Current release: **2.43.5**
+Current release: **2.43.6**
 
 > Engineering notice: OPA is an analysis and education tool. It is not flight-certified, does not generate spacecraft commands, and must not be used as the sole basis for operational or safety-critical decisions.
 
@@ -29,7 +29,7 @@ The first launch needs no private data or network connection. The bundled short-
 
 - Python 3.14 is the verified release and CI environment.
 - Python 3.12 is the minimum dependency-compatible baseline; environments below 3.14 have not yet passed the full OPA release test matrix.
-- A supported Windows or Linux desktop environment for PyQt6.
+- A supported Windows or Linux desktop environment for PySide6.
 - Packages pinned in `requirements.txt`.
 - Bundled scientific data under `data/`, `demo_data/`, and `kernels/`.
 
@@ -116,8 +116,8 @@ Use [CITATION.cff](CITATION.cff) when citing OPA in research, software, reports,
 
 OPA source code is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The `NOTICE` attribution identifies Jamal Damirov and Altay Yusifov and must be preserved in downstream distributions as required by Apache License 2.0 Section 4(d).
 
-Dependencies and scientific data retain their own licenses and terms. The freely distributed PyQt6 edition is GPL v3; anyone distributing the combined application must follow the applicable GPL obligations or obtain appropriate commercial licensing. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/PUBLICATION_CHECKLIST.md).
+Dependencies and scientific data retain their own licenses and terms. OPA uses the official Qt for Python bindings, PySide6, under the LGPLv3/GPLv3 community licensing route. Source-only publication does not bundle dependency wheels; binary distributors must preserve the applicable Qt and third-party notices and satisfy the LGPL requirements. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the [publication checklist](docs/PUBLICATION_CHECKLIST.md).
 
 ## Publication status
 
-The project license and author attribution are configured. Keep a new GitHub repository private until the remaining ownership, PyQt6 licensing-route, security, and release-history checks in `docs/PUBLICATION_CHECKLIST.md` have been completed.
+The project license, author attribution, PySide6 licensing route, scientific-data provenance, and automated release checks are configured. Keep the repository private until the remaining author attestations and GitHub security settings in `docs/PUBLICATION_CHECKLIST.md` have been completed.
