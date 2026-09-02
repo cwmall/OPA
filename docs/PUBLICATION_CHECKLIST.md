@@ -11,7 +11,7 @@
 - [x] Exact direct and transitive source-environment dependencies are recorded in `DEPENDENCY_INVENTORY.md`.
 - [x] GitHub dependency graph, Dependabot alerts, malware alerts, security updates, and grouped security updates are enabled.
 - [x] Pull requests run `actions/dependency-review-action` in CI.
-- [ ] After the repository becomes public, verify automatic GitHub secret scanning and enable Private Vulnerability Reporting.
+- [x] After publication, GitHub Secret Protection, push protection, and Private Vulnerability Reporting were verified as enabled.
 
 ## Manual legal/security gate
 
@@ -22,7 +22,7 @@
 - [x] NAIF acknowledgement/rules and USNO/IERS attribution are retained in `DATA_PROVENANCE.md` and `THIRD_PARTY_NOTICES.md`.
 - [x] Repository visibility remained private until all pre-publication gates passed.
 - [x] `SECURITY.md` provides a private maintainer contact while the repository is private.
-- [ ] Enable Private Vulnerability Reporting immediately after publication; GitHub exposes it for public repositories.
+- [x] Private Vulnerability Reporting was enabled immediately after publication.
 - [x] Signing private keys, enrollment files, packages, passwords, and quarantine paths are outside Git; the pre-rewrite repository is backed up outside the working tree.
 
 ## History gate
