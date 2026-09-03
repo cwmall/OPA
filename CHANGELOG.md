@@ -1,16 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Added Apache License 2.0, the joint-author `NOTICE`, citation metadata, contribution guidance, third-party licensing guidance, and GitHub collaboration templates.
-- Added repository metadata and dependency-update configuration for publication readiness.
-
-## 2.43.6 — 2026-09-02
-
-- Replaced GPL-only PyQt6 bindings with the official LGPLv3/GPLv3 Qt for Python bindings, PySide6.
-- Replaced unverified raster branding with the repository-native SVG mark and a deterministic code-drawn mission header.
-- Expanded publication checks to cover Git history, dependency licensing, provenance, and repository security settings.
-
 ## 2.43.5 — 2026-09-01
 
 - Renamed the distributable repository folder and desktop launcher to Orbital Perturbation Analyzer branding.

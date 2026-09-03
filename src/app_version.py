@@ -4,4 +4,4 @@
 # - PATCH: corrections that do not add user-visible capability;
 # - MINOR: backward-compatible UI/model capability additions;
 # - MAJOR: incompatible data, workflow, or model changes.
-APP_VERSION = "2.43.6"
+APP_VERSION = "2.43.5"

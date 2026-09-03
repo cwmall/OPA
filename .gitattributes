@@ -1,18 +1,5 @@
 * text=auto eol=lf
-
 *.cmd text eol=crlf
-*.bat text eol=crlf
-*.vbs text eol=crlf
-
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.ico binary
-*.pdf binary
 *.bsp binary
-*.bc binary
-*.bpc binary
-*.dsk binary
-*.tls binary
 data/eop/finals2000A.all binary
+kernels/*.tls binary

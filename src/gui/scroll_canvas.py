@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QScrollArea
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 

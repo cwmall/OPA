@@ -2,18 +2,11 @@
 
 ## Supported release
 
-Security fixes are evaluated for the current `2.43.x` public release line.
+Security fixes are prepared for the current `2.42.x` public release line.
 
 ## Reporting
 
-Do not disclose a suspected vulnerability in a public issue, discussion, or pull request. Configure GitHub Private Vulnerability Reporting or private Security Advisories before making the repository public.
-
-Until a private GitHub reporting channel is available, report vulnerabilities privately to both maintainers when practical:
-
-- Jamal Damirov — jamal7damirov@gmail.com
-- Altay Yusifov — altay1yusifov@gmail.com
-
-Do not include real passwords, private datasets, packages, enrollment files, signing keys, screenshots containing confidential information, or destructive payloads.
+Before publication, configure a private GitHub Security Advisory channel. Do not place suspected private datasets, passwords, packages, enrollment files, keys, screenshots, or local paths in a public issue.
 
 ## Security properties
 

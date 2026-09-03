@@ -3,38 +3,28 @@ __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.hypothesis/
 .coverage
-.coverage.*
 htmlcov/
 
 # Virtual environments and builds
 .venv/
 venv/
 env/
-ENV/
 build/
 dist/
 *.egg-info/
 
-# IDE and OS state
+# IDE / OS state
 .idea/
 .vscode/
-*.code-workspace
-*.swp
-*.swo
 .DS_Store
 Thumbs.db
-Desktop.ini
 
 # Per-user application state
 opa_config.json
 config.json
 config.json.bak
 config.json.tmp
-config.local.json
 profiles/
 tle/
 diagnostics/
@@ -51,10 +41,7 @@ temp/
 *.csv.tmp
 *.json.tmp
 
-# Admin enrollment, packages, and every form of secret/key material
-.env
-.env.*
-!.env.example
+# Admin enrollment, packages and every form of secret/key material
 *.opa-admin
 *.enrollment.json
 admin_enrollment.json
@@ -77,5 +64,3 @@ quarantine/
 *.xlsx
 *.pptx
 *.pdf
-
-# SPICE kernels and public scientific data are intentionally NOT ignored.

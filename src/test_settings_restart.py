@@ -11,7 +11,7 @@ _ROOT = Path(tempfile.mkdtemp(prefix="opa-settings-restart-"))
 os.environ["OPA_CONFIG_PATH"] = str(_ROOT / "config.json")
 os.environ["OPA_PROFILE_DIR"] = str(_ROOT / "profiles")
 
-from PySide6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication
 
 from application_config import save_application_config
 from gui.main_window import MainWindow

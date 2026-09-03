@@ -1242,7 +1242,7 @@ def settings_stylesheet():
 def file_dialog_options():
     """Use styleable Qt file dialogs only while Retro is active."""
 
-    from PySide6.QtWidgets import QFileDialog
+    from PyQt6.QtWidgets import QFileDialog
 
     if is_retro():
         return QFileDialog.Option.DontUseNativeDialog

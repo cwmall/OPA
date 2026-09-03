@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 import numpy as np
 
-from PySide6.QtCore import (
+from PyQt6.QtCore import (
     QDate,
     QEvent,
     QLocale,
@@ -22,9 +22,9 @@ from PySide6.QtCore import (
     QRectF,
     QSize,
     QUrl,
-    Signal,
+    pyqtSignal,
 )
-from PySide6.QtGui import (
+from PyQt6.QtGui import (
     QColor,
     QDesktopServices,
     QFontDatabase,
@@ -38,7 +38,7 @@ from PySide6.QtGui import (
     QRadialGradient,
     QShortcut,
 )
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
@@ -150,12 +150,12 @@ ORBIT_DETERMINATION_UI_ENABLED = False
 
 APP_ICON_PATH = os.path.join(
     ASSETS_DIR,
-    "opa_public_mark.svg",
+    "opa_orbit_emblem_windows_v2.ico",
 )
 
 APP_LOGO_PATH = os.path.join(
     ASSETS_DIR,
-    "opa_public_mark.svg",
+    "opa_orbit_emblem_windows_v2.png",
 )
 
 DROPDOWN_ARROW_PATH = os.path.join(
@@ -163,8 +163,11 @@ DROPDOWN_ARROW_PATH = os.path.join(
     "dropdown_arrow.svg",
 )
 
-HERO_BACKGROUND_PATH = ""
-HERO_BACKGROUND_DARK_PATH = ""
+HERO_BACKGROUND_PATH = os.path.join(
+    ASSETS_DIR,
+    "orbital_mission_banner_dark_v2.png",
+)
+HERO_BACKGROUND_DARK_PATH = HERO_BACKGROUND_PATH
 
 if SRC_DIR not in sys.path:
     sys.path.insert(
@@ -736,8 +739,8 @@ def _set_status_role(widget, role):
 
 class TLEUpdateWorker(QObject):
 
-    completed = Signal(object)
-    failed = Signal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
 
     def run(self):
         try:
@@ -753,10 +756,10 @@ class TLEUpdateWorker(QObject):
 
 class PropagationWorker(QObject):
 
-    completed = Signal(object, object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(int)
+    completed = pyqtSignal(object, object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
 
     def __init__(self, parameters):
         super().__init__()
@@ -785,11 +788,11 @@ class PropagationWorker(QObject):
 
 class OrbitDeterminationWorker(QObject):
 
-    completed = Signal(object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(int)
-    stage = Signal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
+    stage = pyqtSignal(str)
 
     def __init__(self, parameters):
         super().__init__()
@@ -814,10 +817,10 @@ class OrbitDeterminationWorker(QObject):
 
 class EclipsePredictionWorker(QObject):
 
-    completed = Signal(object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(int)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
 
     def __init__(self, parameters, initial_epoch, geometry=None):
         super().__init__()
@@ -861,12 +864,12 @@ class EclipsePredictionWorker(QObject):
 
 class YearlyEclipseWorker(QObject):
 
-    completed = Signal(object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(int)
-    stage = Signal(str)
-    date_changed = Signal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
+    stage = pyqtSignal(str)
+    date_changed = pyqtSignal(str)
 
     def __init__(
         self,
@@ -1208,10 +1211,10 @@ class YearlyEclipseWorker(QObject):
 
 class ReferenceComparisonWorker(QObject):
 
-    completed = Signal(object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(int)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
 
     def __init__(
         self,
@@ -1343,7 +1346,7 @@ class MissionControlSurface(QWidget):
 
 
 class HeroBannerFrame(QFrame):
-    """Code-drawn mission header with a compact Retro title band."""
+    """Mission header with Normal artwork and a compact Retro title band."""
 
     def __init__(self, image_path, parent=None, interface_theme="normal"):
         super().__init__(parent)
@@ -1362,63 +1365,37 @@ class HeroBannerFrame(QFrame):
         super().paintEvent(event)
         if theme.is_retro():
             return
-        if self.width() <= 0 or self.height() <= 0:
+        if self._background.isNull() or self.width() <= 0 or self.height() <= 0:
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         clip_path = QPainterPath()
         clip_path.addRoundedRect(QRectF(self.rect()), 8.0, 8.0)
         painter.setClipPath(clip_path)
 
         target = QRectF(self.rect())
-        if self._background.isNull():
-            background = QLinearGradient(0.0, 0.0, target.width(), target.height())
-            background.setColorAt(0.0, QColor(5, 9, 14))
-            background.setColorAt(0.58, QColor(9, 24, 38))
-            background.setColorAt(1.0, QColor(7, 47, 65))
-            painter.fillRect(target, background)
-
-            painter.setPen(QPen(QColor(71, 179, 214, 34), 1.0))
-            grid_step = 30
-            for x in range(0, self.width(), grid_step):
-                painter.drawLine(x, 0, x, self.height())
-            for y in range(0, self.height(), grid_step):
-                painter.drawLine(0, y, self.width(), y)
-
-            orbit = QRectF(
-                target.width() * 0.67,
-                -target.height() * 0.62,
-                target.width() * 0.43,
-                target.height() * 1.55,
+        image_width = float(self._background.width())
+        image_height = float(self._background.height())
+        target_ratio = target.width() / target.height()
+        image_ratio = image_width / image_height
+        if image_ratio > target_ratio:
+            source_width = image_height * target_ratio
+            source = QRectF(
+                image_width - source_width,
+                0.0,
+                source_width,
+                image_height,
             )
-            painter.setPen(QPen(QColor(93, 210, 235, 82), 1.4))
-            painter.drawEllipse(orbit)
-            painter.setPen(QPen(QColor(255, 153, 77, 135), 2.0))
-            painter.drawArc(orbit, 310 * 16, 18 * 16)
         else:
-            image_width = float(self._background.width())
-            image_height = float(self._background.height())
-            target_ratio = target.width() / target.height()
-            image_ratio = image_width / image_height
-            if image_ratio > target_ratio:
-                source_width = image_height * target_ratio
-                source = QRectF(
-                    image_width - source_width,
-                    0.0,
-                    source_width,
-                    image_height,
-                )
-            else:
-                source_height = image_width / target_ratio
-                source = QRectF(
-                    0.0,
-                    (image_height - source_height) / 2.0,
-                    image_width,
-                    source_height,
-                )
-            painter.drawPixmap(target, self._background, source)
+            source_height = image_width / target_ratio
+            source = QRectF(
+                0.0,
+                (image_height - source_height) / 2.0,
+                image_width,
+                source_height,
+            )
+        painter.drawPixmap(target, self._background, source)
 
         readability = QLinearGradient(0.0, 0.0, target.width(), 0.0)
         readability.setColorAt(0.0, QColor(5, 9, 14, 242))
