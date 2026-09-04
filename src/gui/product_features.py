@@ -322,6 +322,14 @@ class ProductFeatureMixin:
             file_menu.addAction(action)
             self.file_actions[text] = action
         file_menu.addSeparator()
+        # The header button is the only other route to this command, and it
+        # is hidden in the Retro theme and on narrow windows.  The menu keeps
+        # the command reachable in every presentation.
+        refresh_action = QAction("Refresh Application", self)
+        refresh_action.triggered.connect(self.refresh_application)
+        file_menu.addAction(refresh_action)
+        self.file_actions["Refresh Application"] = refresh_action
+        file_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
@@ -539,10 +547,12 @@ class ProductFeatureMixin:
         self.refresh_profile_selector()
         subtitle = getattr(self, "main_subtitle", None)
         if subtitle is not None:
+            # The workspace names used to be spelled out here as well, which
+            # only repeated the tab bar two rows below and forced the
+            # subtitle onto a second line.
             subtitle.setText(
                 "MULTI-BODY DYNAMICS CONSOLE  //  "
-                f"{profile.display_name.upper()}  //  "
-                "TELEMETRY / PERTURBATION / PROPAGATION / ORBITAL"
+                f"{profile.display_name.upper()}"
             )
         live_box = getattr(self, "live_satellite_box", None)
         if live_box is not None:

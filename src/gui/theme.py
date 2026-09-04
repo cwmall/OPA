@@ -270,9 +270,12 @@ def monospace_readout_style(colour=None):
 
     selected = colour or ACCENT_INFO
     family = "'Courier New', Consolas" if is_retro() else "'Cascadia Mono', Consolas"
+    # Qt's stylesheet parser has no font-variant-numeric property.  Declaring
+    # it made Qt log "Unknown property" and abandon parsing of the sheet it
+    # appeared in.  The monospace families below already have tabular figures,
+    # so the intent is met without the property.
     return (
-        f"color: {selected}; font-family: {family}; "
-        "font-weight: 600; font-variant-numeric: tabular-nums;"
+        f"color: {selected}; font-family: {family}; font-weight: 600;"
     )
 
 
@@ -336,10 +339,25 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
     """Build the established Normal mission-control stylesheet."""
 
     arrow_url = str(dropdown_arrow_path or "").replace("\\", "/")
+    # The closing brace has to be written as a single "}" here: only the
+    # first fragment is an f-string, so a doubled brace in the plain
+    # continuation string survived literally and left the finished sheet with
+    # one brace too many.  Qt then abandoned the whole sheet with
+    # "Could not parse stylesheet".
     arrow_rule = (
         f'QComboBox::down-arrow {{ image: url("{arrow_url}"); '
-        "width: 12px; height: 8px; }}"
+        "width: 12px; height: 8px; }"
         if arrow_url
+        else ""
+    )
+    checkmark_url = (
+        _asset_url(dropdown_arrow_path, "checkbox_checked_dark.svg")
+        if dropdown_arrow_path
+        else ""
+    )
+    checkmark_rule = (
+        f'QCheckBox::indicator:checked {{ image: url("{checkmark_url}"); }}'
+        if checkmark_url
         else ""
     )
     return f"""
@@ -453,12 +471,11 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
         }}
         QLabel#telemetryValue {{
             color: {TEXT_PRIMARY}; font-family: "Cascadia Mono", Consolas;
-            font-size: 10pt; font-variant-numeric: tabular-nums;
+            font-size: 10pt;
         }}
         QLabel#telemetryPrimary {{
             color: {ACCENT_INFO}; font-family: "Cascadia Mono", Consolas;
             font-size: 12pt; font-weight: 700;
-            font-variant-numeric: tabular-nums;
         }}
         QLabel[statusRole="ok"] {{ color: {STATUS_OK}; font-weight: 700; }}
         QLabel[statusRole="warning"] {{ color: {STATUS_WARNING}; font-weight: 700; }}
@@ -475,7 +492,7 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
             background: {TAB_SURFACE}; color: {TEXT_MUTED};
             border: 1px solid {BORDER}; border-bottom: 2px solid {BORDER};
             border-top-left-radius: 5px; border-top-right-radius: 5px;
-            padding: 10px 14px; margin-right: 3px; min-width: 98px;
+            padding: 8px 15px; margin-right: 3px; min-width: 96px;
             font-size: 8.5pt; font-weight: 700; letter-spacing: 0.5px;
         }}
         QTabBar::tab:selected {{
@@ -522,7 +539,6 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
         }}
         QLineEdit, QTextEdit {{
             font-family: "Cascadia Mono", Consolas;
-            font-variant-numeric: tabular-nums;
         }}
         QLineEdit:hover, QTextEdit:hover, QComboBox:hover, QSpinBox:hover,
         QDoubleSpinBox:hover, QDateEdit:hover, QDateTimeEdit:hover {{
@@ -596,18 +612,29 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
             border: 1px solid {BORDER};
         }}
 
-        QCheckBox, QRadioButton {{ spacing: 8px; color: {TEXT_SECONDARY}; }}
+        QCheckBox, QRadioButton {{ spacing: 9px; color: {TEXT_SECONDARY}; }}
+        QCheckBox:disabled, QRadioButton:disabled {{ color: {DISABLED_TEXT}; }}
         QCheckBox::indicator, QRadioButton::indicator {{
             width: 16px; height: 16px; border: 1px solid {BORDER_STRONG};
             background: {INPUT};
         }}
-        QCheckBox::indicator {{ border-radius: 3px; }}
-        QRadioButton::indicator {{ border-radius: 8px; }}
+        QCheckBox::indicator {{ border-radius: 4px; }}
+        QRadioButton::indicator {{ border-radius: 9px; }}
         QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
             border-color: {ACCENT};
         }}
         QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
             background: {ACCENT}; border: 1px solid {ACCENT_HOVER};
+        }}
+        QRadioButton::indicator:checked {{
+            /* 10px core plus a 4px ring is the same 18px outer box as the
+               unchecked 16px core plus a 1px border, so selecting an option
+               never widens the control or nudges the label beside it. */
+            width: 10px; height: 10px; border: 4px solid {ACCENT};
+            border-radius: 9px; background: {INPUT};
+        }}
+        QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+            background: {DISABLED_SURFACE}; border-color: {BORDER};
         }}
 
         QSlider::groove:horizontal {{
@@ -673,6 +700,7 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
             font-family: "Cascadia Mono", Consolas; font-size: 8pt;
         }}
         {arrow_rule}
+        {checkmark_rule}
     """
 
 
