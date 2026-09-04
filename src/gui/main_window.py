@@ -11,8 +11,10 @@ import numpy as np
 
 from PyQt6.QtCore import (
     QDate,
+    QEasingCurve,
     QEvent,
     QLocale,
+    QPropertyAnimation,
     QTime,
     QTimer,
     Qt,
@@ -28,6 +30,7 @@ from PyQt6.QtGui import (
     QColor,
     QDesktopServices,
     QFontDatabase,
+    QFontMetrics,
     QIcon,
     QKeySequence,
     QLinearGradient,
@@ -67,6 +70,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QCalendarWidget,
     QTimeEdit,
+    QGraphicsOpacityEffect,
     QSizePolicy,
     QProgressBar,
     QSlider,
@@ -727,6 +731,22 @@ def load_application_fonts():
 # ============================================================
 # BACKGROUND WORKERS
 # ============================================================
+
+def interface_animations_enabled():
+    """Report whether short interface transitions should actually run.
+
+    Offscreen rendering is used by the headless smoke test, the visual-QA
+    capture and the unit suite.  Those callers show a surface and grab it in
+    the same event-loop turn, so a running fade would be captured half
+    finished.  Animation is presentation only: it is skipped there and the
+    final state is applied immediately.
+    """
+
+    application = QApplication.instance()
+    if application is None:
+        return False
+    return application.platformName() != "offscreen"
+
 
 def _set_status_role(widget, role):
     """Apply a semantic status role and immediately refresh Qt styling."""
@@ -1430,11 +1450,16 @@ class HeroBannerFrame(QFrame):
             )
         painter.drawPixmap(target, self._background, source)
 
+        # Text sits at both ends of the banner, so the scrim is dark under
+        # the title and dark again under the status controls, leaving one
+        # bright window of artwork between them.  A single left-to-right
+        # ramp used to leave the right-hand controls sitting on open sky.
         readability = QLinearGradient(0.0, 0.0, target.width(), 0.0)
-        readability.setColorAt(0.0, QColor(5, 9, 14, 242))
-        readability.setColorAt(0.50, QColor(5, 9, 14, 208))
-        readability.setColorAt(0.76, QColor(5, 9, 14, 80))
-        readability.setColorAt(1.0, QColor(5, 9, 14, 108))
+        readability.setColorAt(0.0, QColor(5, 9, 14, 244))
+        readability.setColorAt(0.40, QColor(5, 9, 14, 214))
+        readability.setColorAt(0.60, QColor(5, 9, 14, 132))
+        readability.setColorAt(0.78, QColor(5, 9, 14, 196))
+        readability.setColorAt(1.0, QColor(5, 9, 14, 228))
         painter.fillRect(target, readability)
 
         painter.setClipping(False)
@@ -1455,6 +1480,8 @@ class SettingsOverlay(QWidget):
         self.setObjectName("settingsOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._panel_opacity = None
+        self._panel_fade = None
         parent.installEventFilter(self)
 
         overlay_layout = QVBoxLayout(self)
@@ -1504,19 +1531,22 @@ class SettingsOverlay(QWidget):
         self.program_nav_button.setObjectName("settingsNavButton")
         self.program_nav_button.setCheckable(True)
         self.program_nav_button.setChecked(True)
-        self.program_nav_button.setMinimumHeight(58)
+        self.program_nav_button.setMinimumHeight(52)
         navigation_layout.addWidget(self.program_nav_button)
-        navigation_layout.addStretch()
         self.admin_nav_button = QPushButton("ADMIN ACCESS")
         self.admin_nav_button.setObjectName("settingsNavButton")
         self.admin_nav_button.setCheckable(True)
-        self.admin_nav_button.setMinimumHeight(44)
+        self.admin_nav_button.setMinimumHeight(42)
         navigation_layout.addWidget(self.admin_nav_button)
         self.credits_nav_button = QPushButton("CREDITS")
         self.credits_nav_button.setObjectName("settingsNavButton")
         self.credits_nav_button.setCheckable(True)
-        self.credits_nav_button.setMinimumHeight(44)
+        self.credits_nav_button.setMinimumHeight(42)
         navigation_layout.addWidget(self.credits_nav_button)
+        # The three destinations read as one contiguous group; the free
+        # space belongs below them, not wedged between the first and the
+        # second entry.
+        navigation_layout.addStretch(1)
         body_layout.addWidget(navigation)
 
         self.pages = QStackedWidget()
@@ -2081,6 +2111,32 @@ class SettingsOverlay(QWidget):
         self.raise_()
         self.show()
         self.setFocus(Qt.FocusReason.PopupFocusReason)
+        self._run_entrance_fade()
+
+    def _run_entrance_fade(self):
+        """Fade the panel in without moving it.
+
+        Opacity is the only animated property, so the panel never changes
+        size or position while it appears and nothing around it reflows.
+        """
+
+        if not interface_animations_enabled():
+            if self._panel_opacity is not None:
+                self._panel_opacity.setOpacity(1.0)
+            return
+        if self._panel_opacity is None:
+            self._panel_opacity = QGraphicsOpacityEffect(self.panel)
+            self.panel.setGraphicsEffect(self._panel_opacity)
+        if self._panel_fade is not None:
+            self._panel_fade.stop()
+        self._panel_opacity.setOpacity(0.0)
+        fade = QPropertyAnimation(self._panel_opacity, b"opacity", self)
+        fade.setDuration(130)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._panel_fade = fade
+        fade.start()
 
     def eventFilter(self, watched, event):
         if watched is self.parentWidget() and event.type() == QEvent.Type.Resize:
@@ -2647,7 +2703,9 @@ class KeplerComparisonWidget(QWidget):
         self.visual_scale_slider.setValue(1)
         self.visual_scale_slider.setTickInterval(10)
         self.visual_scale_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.visual_scale_slider.setMinimumWidth(260)
+        # A 260px floor stopped the row compressing on a 1024px window and
+        # the slider grew over the "100x" end label instead.
+        self.visual_scale_slider.setMinimumWidth(150)
         controls.addWidget(QLabel("1×"))
         controls.addWidget(self.visual_scale_slider, 1)
         controls.addWidget(QLabel("100×"))
@@ -3725,6 +3783,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
 
         self.create_ui()
+        self.apply_minimum_window_size()
         self.install_wheel_value_guards()
 
         # Mouse events can arrive much faster than the GUI can paint.  A
@@ -3855,8 +3914,8 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
         main_layout = QVBoxLayout(central)
         self.main_layout = main_layout
-        main_layout.setContentsMargins(18, 14, 18, 18)
-        main_layout.setSpacing(14)
+        main_layout.setContentsMargins(16, 12, 16, 14)
+        main_layout.setSpacing(11)
 
         # ----------------------------------------------------
         # HERO HEADER
@@ -3867,8 +3926,8 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             interface_theme=self.interface_theme,
         )
         self.hero_card = hero
-        hero.setMinimumHeight(132)
-        hero.setMaximumHeight(164)
+        hero.setMinimumHeight(116)
+        hero.setMaximumHeight(132)
         hero.setObjectName(
             "heroCard"
         )
@@ -3887,7 +3946,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             "background: transparent; border: none;"
         )
         self.hero_logo = logo
-        logo_size = 88
+        logo_size = 72
         logo.setFixedSize(logo_size, logo_size)
         logo.setAlignment(
             Qt.AlignmentFlag.AlignCenter
@@ -3919,6 +3978,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             "ORBITAL DYNAMICS"
         )
         mission_eyebrow.setObjectName("missionEyebrow")
+        self.mission_eyebrow = mission_eyebrow
 
         title = QLabel("ORBITAL PERTURBATION ANALYZER")
         self.main_title = title
@@ -3995,20 +4055,25 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             "Open appearance, configuration and credits."
         )
         self.settings_button.clicked.connect(self.open_settings_overlay)
+        # One action row, then one meta row.  Keeping every control on a
+        # single line stops the header from growing a fourth stacked row and
+        # leaves the artwork a clear area to breathe on the left.
         top_status_layout = QHBoxLayout()
         top_status_layout.setContentsMargins(0, 0, 0, 0)
         top_status_layout.setSpacing(8)
-        top_status_layout.addWidget(self.settings_button)
+        top_status_layout.addStretch(1)
         top_status_layout.addWidget(self.hero_status)
+        top_status_layout.addWidget(self.settings_button)
+        top_status_layout.addWidget(self.refresh_app_button)
         mission_status_layout.addLayout(top_status_layout)
         mission_status_layout.addWidget(self.hero_model)
         details_layout = QHBoxLayout()
         details_layout.setContentsMargins(0, 0, 0, 0)
-        details_layout.setSpacing(12)
+        details_layout.setSpacing(10)
+        details_layout.addStretch(1)
         details_layout.addWidget(self.hero_utc)
         details_layout.addWidget(mission_version)
         mission_status_layout.addLayout(details_layout)
-        mission_status_layout.addWidget(self.refresh_app_button)
         hero_layout.addLayout(mission_status_layout)
 
         main_layout.addWidget(
@@ -4389,6 +4454,67 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         return self.interface_theme
 
 
+    # The workspace is dense enough that below roughly 1024x600 captions
+    # start to clip and the command bar controls begin to overlap.  Refusing
+    # to shrink past that is what keeps the layout correct rather than
+    # patching each panel for a size no display actually uses.
+    MINIMUM_WINDOW_SIZE = (1024, 600)
+
+    def apply_minimum_window_size(self):
+        """Stop the window shrinking into a size the layout cannot hold.
+
+        The floor is clamped to the screen so a high-DPI desktop, where the
+        logical work area can itself be smaller than the floor, never ends up
+        with a window it cannot fit.
+        """
+
+        minimum_width, minimum_height = self.MINIMUM_WINDOW_SIZE
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            minimum_width = min(minimum_width, max(320, available.width() - 40))
+            minimum_height = min(minimum_height, max(240, available.height() - 80))
+        self.setMinimumSize(minimum_width, minimum_height)
+
+    # Widths at which the header sheds its least important text.  The title
+    # is set at a fixed 24px, which needs 514px of the header row; below
+    # roughly 1280px that no longer fits beside the status controls and both
+    # the title and the buttons were being clipped.
+    HERO_TITLE_STEPS = ((1400, 24), (1200, 20), (1040, 17), (0, 15))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.apply_responsive_hero()
+
+    def apply_responsive_hero(self):
+        """Scale the header to the window so no header text is ever clipped."""
+
+        if not hasattr(self, "main_title"):
+            return
+        width = self.width()
+        for threshold, size in self.HERO_TITLE_STEPS:
+            if width >= threshold:
+                title_size = size
+                break
+        # A stylesheet font-size outranks setFont(), so the step has to be
+        # written as a widget stylesheet too.  It is only reapplied when the
+        # step actually changes, otherwise every resize event would trigger a
+        # full restyle of the header.
+        if getattr(self, "_hero_title_size", None) != title_size:
+            self._hero_title_size = title_size
+            self.main_title.setStyleSheet(f"font-size: {title_size}px;")
+
+        retro = theme.is_retro()
+        # The model chain also appears in Settings, so dropping it on a
+        # narrow window loses no information.
+        self.hero_model.setVisible(not retro and width >= 1200)
+        self.mission_eyebrow.setVisible(not retro and width >= 900)
+        self.main_subtitle.setVisible(width >= 820)
+        # Azerbaijani labels are noticeably longer than the English ones, so
+        # the three header controls stop fitting before the window gets
+        # narrow.  The restart command stays available from the File menu.
+        self.refresh_app_button.setVisible(not retro and width >= 1200)
+
     def apply_theme_presentation(self):
         """Apply theme-specific density and desktop-shell presentation."""
 
@@ -4405,14 +4531,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             logo_size = 48
             self.mission_status_layout.setSpacing(2)
         else:
-            self.main_layout.setContentsMargins(18, 14, 18, 18)
-            self.main_layout.setSpacing(14)
+            self.main_layout.setContentsMargins(16, 12, 16, 14)
+            self.main_layout.setSpacing(11)
             self.hero_layout.setContentsMargins(20, 12, 20, 12)
             self.hero_layout.setSpacing(18)
-            self.hero_card.setMinimumHeight(132)
-            self.hero_card.setMaximumHeight(164)
-            logo_size = 88
-            self.mission_status_layout.setSpacing(8)
+            self.hero_card.setMinimumHeight(116)
+            self.hero_card.setMaximumHeight(132)
+            logo_size = 72
+            self.mission_status_layout.setSpacing(7)
 
         self.hero_logo.setFixedSize(logo_size, logo_size)
         if not self.hero_logo_pixmap.isNull():
@@ -4425,6 +4551,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
                 )
             )
         self.hero_model.setVisible(not retro)
+        self.apply_responsive_hero()
         self.refresh_app_button.setVisible(not retro)
         self.settings_button.setVisible(not retro)
 
@@ -4719,6 +4846,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
     # MONITOR PAGE
     # ========================================================
 
+    @staticmethod
+    def _reserve_readout_width(labels, widest_reading):
+        """Hold a fixed width for labels that are rewritten continuously."""
+
+        for label in labels:
+            metrics = QFontMetrics(label.font())
+            label.setMinimumWidth(metrics.horizontalAdvance(widest_reading) + 6)
+
     def create_monitor_page(self):
 
         page = QWidget()
@@ -4732,17 +4867,12 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         )
         monitor_content = QWidget()
         layout = QVBoxLayout(monitor_content)
-        layout.setContentsMargins(10, 8, 10, 12)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(8)
 
-        spacecraft_row = QHBoxLayout()
-        spacecraft_row.addWidget(QLabel("Spacecraft:"))
-        self.telemetry_spacecraft_selector = self.register_spacecraft_selector(
-            QComboBox()
-        )
-        self.telemetry_spacecraft_selector.setMinimumWidth(260)
-        spacecraft_row.addWidget(self.telemetry_spacecraft_selector)
-        spacecraft_row.addStretch(1)
-        layout.addLayout(spacecraft_row)
+        # The active spacecraft is chosen once in the command bar above the
+        # workspace; every module reads that same selection, so no page
+        # repeats the control.
 
         # ----------------------------------------------------
         # SATELLITE + CELESTIAL EPHEMERIDES
@@ -4761,25 +4891,29 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         satellite_layout = QGridLayout(
             satellite_box
         )
-        satellite_layout.setHorizontalSpacing(18)
+        satellite_layout.setContentsMargins(16, 16, 16, 12)
+        satellite_layout.setHorizontalSpacing(14)
+        satellite_layout.setVerticalSpacing(7)
+        # Only columns 0 and 1 carry content here; column 2 is the trailing
+        # spacer that keeps the caption/readout pair together on the left.
         satellite_layout.setColumnStretch(0, 0)
         satellite_layout.setColumnStretch(1, 0)
         satellite_layout.setColumnStretch(2, 1)
 
         self.sat_x = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.sat_y = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.sat_z = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.sat_distance = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
         for value_label in (
             self.sat_x,
@@ -4846,25 +4980,31 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         moon_layout = QGridLayout(
             moon_box
         )
-        moon_layout.setHorizontalSpacing(18)
+        moon_layout.setContentsMargins(16, 16, 16, 12)
+        moon_layout.setHorizontalSpacing(14)
+        moon_layout.setVerticalSpacing(7)
+        # Columns 0 and 2 carry captions, 1 and 3 carry readouts.  The
+        # stretch belongs on the readout columns so each value stays beside
+        # its own caption instead of being pushed to the panel edge.
         moon_layout.setColumnStretch(0, 0)
-        moon_layout.setColumnStretch(1, 0)
-        moon_layout.setColumnStretch(2, 1)
+        moon_layout.setColumnStretch(1, 1)
+        moon_layout.setColumnStretch(2, 0)
+        moon_layout.setColumnStretch(3, 1)
 
         self.moon_x = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.moon_y = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.moon_z = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
 
         self.moon_distance = QLabel(
-            "0.000000 km"
+            "0.000 km"
         )
         for value_label in (
             self.moon_x,
@@ -4922,10 +5062,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             1
         )
 
-        self.sun_x = QLabel("0.000000 km")
-        self.sun_y = QLabel("0.000000 km")
-        self.sun_z = QLabel("0.000000 km")
-        self.sun_distance = QLabel("0.000000 km")
+        self.sun_x = QLabel("0.000 km")
+        self.sun_y = QLabel("0.000 km")
+        self.sun_z = QLabel("0.000 km")
+        self.sun_distance = QLabel("0.000 km")
         for value_label in (
             self.sun_x,
             self.sun_y,
@@ -4943,12 +5083,18 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         moon_layout.addWidget(QLabel("Earth-Sun Distance:"), 3, 2)
         moon_layout.addWidget(self.sun_distance, 3, 3)
 
+        # The ephemerides panel carries twice as many caption/readout pairs
+        # as the state panel, so it is given twice the width instead of an
+        # even split that left one panel half empty on wide screens.
+        top_layout.setSpacing(10)
         top_layout.addWidget(
-            satellite_box
+            satellite_box,
+            1,
         )
 
         top_layout.addWidget(
-            moon_box
+            moon_box,
+            2,
         )
 
         layout.addLayout(
@@ -4968,10 +5114,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         perturbation_layout = QGridLayout(
             perturbation_box
         )
-        perturbation_layout.setHorizontalSpacing(18)
+        perturbation_layout.setContentsMargins(16, 16, 16, 12)
+        perturbation_layout.setHorizontalSpacing(14)
+        perturbation_layout.setVerticalSpacing(7)
+        # Same caption/readout pairing as the ephemerides panel above.
         perturbation_layout.setColumnStretch(0, 0)
-        perturbation_layout.setColumnStretch(1, 0)
-        perturbation_layout.setColumnStretch(2, 1)
+        perturbation_layout.setColumnStretch(1, 1)
+        perturbation_layout.setColumnStretch(2, 0)
+        perturbation_layout.setColumnStretch(3, 1)
 
         self.live_force_moon = QCheckBox("Moon — DE440")
         self.live_force_moon.setChecked(True)
@@ -4993,6 +5143,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             lambda _checked=False: self.update_data()
         )
         force_selector = QHBoxLayout()
+        # Without explicit spacing each label ran straight into the next
+        # check indicator, so the three switches read as one long string.
+        force_selector.setSpacing(20)
+        force_selector.setContentsMargins(0, 0, 0, 4)
         force_selector.addWidget(QLabel("Active force modules:"))
         force_selector.addWidget(self.live_force_moon)
         force_selector.addWidget(self.live_force_sun)
@@ -5001,19 +5155,19 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         perturbation_layout.addLayout(force_selector, 0, 0, 1, 4)
 
         self.ax_value = QLabel(
-            "0.000000e+00 km/s²"
+            "0.0000e+00 km/s²"
         )
 
         self.ay_value = QLabel(
-            "0.000000e+00 km/s²"
+            "0.0000e+00 km/s²"
         )
 
         self.az_value = QLabel(
-            "0.000000e+00 km/s²"
+            "0.0000e+00 km/s²"
         )
 
         self.magnitude_value = QLabel(
-            "0.000000e+00 km/s²"
+            "0.0000e+00 km/s²"
         )
         for value_label in (
             self.ax_value,
@@ -5087,8 +5241,8 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             1
         )
 
-        self.live_moon_magnitude = QLabel("0.000000e+00 km/s²")
-        self.live_sun_magnitude = QLabel("0.000000e+00 km/s²")
+        self.live_moon_magnitude = QLabel("0.0000e+00 km/s²")
+        self.live_sun_magnitude = QLabel("0.0000e+00 km/s²")
         self.live_srp_magnitude = QLabel("Waiting for live state...")
         self.live_srp_illumination = QLabel("N/A")
         self.live_force_mode = QLabel("MOON + SUN + SRP")
@@ -5115,6 +5269,31 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             for caption_label in telemetry_panel.findChildren(QLabel):
                 if not caption_label.objectName():
                     caption_label.setObjectName("telemetryLabel")
+
+        # Live readouts are rewritten once a second and every value has a
+        # different width.  Reserving the width of the widest reading each
+        # field can produce keeps the grid columns still, so the panel never
+        # twitches while the numbers change.
+        self._reserve_readout_width(
+            (
+                self.sat_x, self.sat_y, self.sat_z, self.sat_distance,
+                self.moon_x, self.moon_y, self.moon_z, self.moon_distance,
+                self.sun_x, self.sun_y, self.sun_z, self.sun_distance,
+            ),
+            "-000000000.000 km",
+        )
+        self._reserve_readout_width(
+            (
+                self.ax_value, self.ay_value, self.az_value,
+                self.live_moon_magnitude, self.live_sun_magnitude,
+                self.live_srp_magnitude,
+            ),
+            "-0.0000e+00 km/s²",
+        )
+        self._reserve_readout_width(
+            (self.magnitude_value,),
+            "-0.0000e+00 km/s²",
+        )
 
         layout.addWidget(
             perturbation_box
@@ -5148,6 +5327,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         _set_status_role(self.tle_status, "ok")
         _set_status_role(self.utc_status, "info")
 
+        # Read the three indicators left to right, then act: the single
+        # action sits on the right edge instead of between two readouts.
+        status_layout.setContentsMargins(16, 14, 16, 8)
+        status_layout.setSpacing(18)
         status_layout.addWidget(
             self.spice_status
         )
@@ -5155,6 +5338,12 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         status_layout.addWidget(
             self.tle_status
         )
+
+        status_layout.addWidget(
+            self.utc_status
+        )
+
+        status_layout.addStretch(1)
 
         self.live_tle_update_button = QPushButton(
             "UPDATE TLE"
@@ -5172,10 +5361,6 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         )
         status_layout.addWidget(
             self.live_tle_update_button
-        )
-
-        status_layout.addWidget(
-            self.utc_status
         )
 
         layout.addWidget(
@@ -5221,14 +5406,6 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         controls_host_layout.setSpacing(3)
         controls = QHBoxLayout()
         self.graph_primary_controls_layout = controls
-
-        controls.addWidget(QLabel("Spacecraft:"))
-        self.perturbation_spacecraft_selector = self.register_spacecraft_selector(
-            QComboBox()
-        )
-        self.perturbation_spacecraft_selector.setMinimumWidth(220)
-        controls.addWidget(self.perturbation_spacecraft_selector)
-        controls.addSpacing(14)
 
         controls.addWidget(
             QLabel("Time range:")
@@ -5381,7 +5558,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         # A 520 px hard minimum forced the controls off-screen on common
         # 768/1080 px desktop work areas.  The canvas remains expandable but
         # can now share the available viewport with its controls.
-        self.graph.setMinimumHeight(160)
+        # The control block above the plot needs about 120px, so a 160px
+        # floor pushed the canvas past the bottom of the page on a 600px
+        # tall window.  132px still leaves a usable plot and fits.
+        self.graph.setMinimumHeight(132)
         self.graph.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -5453,13 +5633,6 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
         controls = QHBoxLayout()
         controls.setSpacing(10)
-
-        controls.addWidget(QLabel("Spacecraft:"))
-        self.orbital_spacecraft_selector = self.register_spacecraft_selector(
-            QComboBox()
-        )
-        self.orbital_spacecraft_selector.setMinimumWidth(220)
-        controls.addWidget(self.orbital_spacecraft_selector)
 
         self.sync_active_profile_orbital_object()
 
@@ -5539,8 +5712,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.system_zoom_in_button = QPushButton(
             "+"
         )
+        # The stylesheet's 14px horizontal padding makes the natural width
+        # 40px; a 38px fixed width clipped the glyph.
         self.system_zoom_in_button.setFixedWidth(
-            38
+            40
         )
         self.system_zoom_in_button.setToolTip(
             "Zoom in deeply toward the focused object."
@@ -5556,7 +5731,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             "−"
         )
         self.system_zoom_out_button.setFixedWidth(
-            38
+            40
         )
         self.system_zoom_out_button.setToolTip(
             "Zoom out from the focused object."
@@ -11750,15 +11925,21 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         layout.setContentsMargins(12, 10, 12, 16)
         layout.setSpacing(14)
 
+        # The five-sentence version of this guidance used to occupy two full
+        # rows above the workspace.  The page keeps one orienting line and
+        # carries the detail in a tooltip instead.
         description = QLabel(
+            "Check a bundled reference, or predict from your own J2000 state."
+        )
+        description.setWordWrap(True)
+        description.setObjectName("metricDetail")
+        description.setToolTip(
             "Two workflows. To check a bundled reference: pick it below and "
             "press RUN — leave the state fields empty and ignore the force "
             "switches, they do not affect that run. To predict from your own "
             "state: fill the J2000 fields, then press CALCULATE ECLIPSE "
             "EVENTS. Earth and Moon apparent discs are both evaluated."
         )
-        description.setWordWrap(True)
-        description.setObjectName("metricDetail")
         layout.addWidget(description)
 
         input_box = QGroupBox("ECLIPSE INITIAL STATE — J2000")
@@ -12202,10 +12383,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         )
         reference_layout.addLayout(reference_progress_layout)
 
+        # This label is replaced by the real verdict after a run; its resting
+        # text only has to say that a run is what fills it.
         self.eclipse_reference_summary_label = QLabel(
-            "Run the calculation. The result will explain in plain language "
-            "how early or late the model is relative to the reference and "
-            "show the likely cause."
+            "Run the comparison to see how early or late the model is."
         )
         self.eclipse_reference_summary_label.setWordWrap(True)
         self.eclipse_reference_summary_label.setObjectName("metricDetail")
@@ -13148,16 +13329,6 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         description.setWordWrap(True)
         description.setObjectName("metricDetail")
         main_layout.addWidget(description)
-
-        spacecraft_row = QHBoxLayout()
-        spacecraft_row.addWidget(QLabel("Spacecraft:"))
-        self.propagation_spacecraft_selector = self.register_spacecraft_selector(
-            QComboBox()
-        )
-        self.propagation_spacecraft_selector.setMinimumWidth(260)
-        spacecraft_row.addWidget(self.propagation_spacecraft_selector)
-        spacecraft_row.addStretch(1)
-        main_layout.addLayout(spacecraft_row)
 
         # INITIAL STATE
         state_box = QGroupBox("INITIAL STATE — J2000")
@@ -17071,41 +17242,41 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
                 srp_mode,
             )
 
-            self.sat_x.setText(f"{r_sat[0]:.6f} km")
-            self.sat_y.setText(f"{r_sat[1]:.6f} km")
-            self.sat_z.setText(f"{r_sat[2]:.6f} km")
-            self.sat_distance.setText(f"{np.linalg.norm(r_sat):.6f} km")
+            self.sat_x.setText(f"{r_sat[0]:.3f} km")
+            self.sat_y.setText(f"{r_sat[1]:.3f} km")
+            self.sat_z.setText(f"{r_sat[2]:.3f} km")
+            self.sat_distance.setText(f"{np.linalg.norm(r_sat):.3f} km")
 
-            self.moon_x.setText(f"{r_moon[0]:.6f} km")
-            self.moon_y.setText(f"{r_moon[1]:.6f} km")
-            self.moon_z.setText(f"{r_moon[2]:.6f} km")
-            self.moon_distance.setText(f"{np.linalg.norm(r_moon):.6f} km")
-            self.sun_x.setText(f"{r_sun[0]:.6f} km")
-            self.sun_y.setText(f"{r_sun[1]:.6f} km")
-            self.sun_z.setText(f"{r_sun[2]:.6f} km")
-            self.sun_distance.setText(f"{np.linalg.norm(r_sun):.6f} km")
+            self.moon_x.setText(f"{r_moon[0]:.3f} km")
+            self.moon_y.setText(f"{r_moon[1]:.3f} km")
+            self.moon_z.setText(f"{r_moon[2]:.3f} km")
+            self.moon_distance.setText(f"{np.linalg.norm(r_moon):.3f} km")
+            self.sun_x.setText(f"{r_sun[0]:.3f} km")
+            self.sun_y.setText(f"{r_sun[1]:.3f} km")
+            self.sun_z.setText(f"{r_sun[2]:.3f} km")
+            self.sun_distance.setText(f"{np.linalg.norm(r_sun):.3f} km")
 
             self.ax_value.setText(
-                f"{displayed_acceleration[0]:.9e} km/s²"
+                f"{displayed_acceleration[0]:.4e} km/s²"
             )
             self.ay_value.setText(
-                f"{displayed_acceleration[1]:.9e} km/s²"
+                f"{displayed_acceleration[1]:.4e} km/s²"
             )
             self.az_value.setText(
-                f"{displayed_acceleration[2]:.9e} km/s²"
+                f"{displayed_acceleration[2]:.4e} km/s²"
             )
-            self.magnitude_value.setText(f"{displayed_magnitude:.9e} km/s²")
+            self.magnitude_value.setText(f"{displayed_magnitude:.4e} km/s²")
             self.live_moon_magnitude.setText(
-                f"{np.linalg.norm(a_moon):.9e} km/s²"
+                f"{np.linalg.norm(a_moon):.4e} km/s²"
             )
             self.live_sun_magnitude.setText(
-                f"{np.linalg.norm(a_sun):.9e} km/s²"
+                f"{np.linalg.norm(a_sun):.4e} km/s²"
             )
             self.live_srp_magnitude.setText(
-                f"{np.linalg.norm(a_srp):.9e} km/s²"
+                f"{np.linalg.norm(a_srp):.4e} km/s²"
             )
             self.live_srp_illumination.setText(
-                f"{srp_illumination:.6f} / CP {srp_coefficient:.7f} "
+                f"{srp_illumination:.4f}  ·  CP {srp_coefficient:.4f}  "
                 f"{srp_mode}"
             )
             self.live_force_mode.setText(
