@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.46.0
+
+- Added an Eclipse-module `SUN OUTAGE` workspace using ITU-R S.1525-1
+  antenna-beam geometry, WGS-84 ground stations and the JPL DE440 apparent
+  Sun direction.
+- Added UTC and Baku-time yearly risk windows, refined start/peak/end contacts,
+  minimum angular separation, duration and CSV export.
+- Admin ground-station coordinates remain memory-only and are available to the
+  calculation only while the signed package is unlocked; Public Mode uses
+  explicitly synthetic stations.
+
 ## 2.45.0 — 2026-09-04
 
 - Added a graph-local Full Screen control to the Perturbation page.

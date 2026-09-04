@@ -55,6 +55,14 @@ class ModuleNavigationTests(unittest.TestCase):
             self.window.module_tabs.widget(self.window.eclipse_module_index),
             self.window.eclipse_page,
         )
+        self.assertEqual(
+            [
+                self.window.eclipse_workspace_tabs.tabText(index)
+                for index in range(self.window.eclipse_workspace_tabs.count())
+            ],
+            ["ECLIPSE PREDICTION", "SUN OUTAGE"],
+        )
+        self.assertGreaterEqual(self.window.sun_outage_station_combo.count(), 1)
 
     def test_navigation_routes_nested_and_top_level_pages(self):
         self.assertTrue(self.window.select_tab_by_label("REFERENCE LAB"))
@@ -92,6 +100,10 @@ class ModuleNavigationTests(unittest.TestCase):
         self.window.apply_language("az")
         self.assertFalse(self.window.select_tab_by_label("ORBİT TƏYİNİ"))
         self.assertTrue(self.window.select_tab_by_label("ECLIPSE"))
+        self.assertEqual(
+            self.window.eclipse_workspace_tabs.tabText(1),
+            "GÜNƏŞ MANEƏSİ",
+        )
 
     def test_theme_switch_keeps_module_and_version_state(self):
         self.window.select_module_by_label("ECLIPSE")

@@ -349,10 +349,17 @@ from orbital_elements import cartesian_to_keplerian
 from orbit_determination import (
     OrbitDeterminationCancelled,
     OrbitDeterminationError,
+    available_ground_stations,
     clear_session_orbit_determination_datasets,
     fit_weighted_least_squares,
     load_dataset as load_orbit_determination_dataset,
     register_session_orbit_determination_datasets,
+)
+from sun_outage import (
+    SunOutageCancelled,
+    SunOutageStation,
+    predict_sun_outages,
+    save_sun_outage_csv,
 )
 from constants import MU_EARTH
 from earth_orientation import (
@@ -913,6 +920,31 @@ class EclipsePredictionWorker(QObject):
             self.failed.emit(
                 f"{type(error).__name__}: {error}"
             )
+
+
+class SunOutageWorker(QObject):
+
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
+
+    def __init__(self, parameters):
+        super().__init__()
+        self.parameters = dict(parameters)
+
+    def run(self):
+        try:
+            prediction = predict_sun_outages(
+                **self.parameters,
+                cancel_check=self.thread().isInterruptionRequested,
+                progress_callback=lambda value: self.progress.emit(int(value)),
+            )
+            self.completed.emit(prediction)
+        except SunOutageCancelled:
+            self.cancelled.emit()
+        except Exception as error:
+            self.failed.emit(f"{type(error).__name__}: {error}")
 
 
 class YearlyEclipseWorker(QObject):
@@ -3739,6 +3771,9 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self._graph_prediction_timer_was_active = False
         self.eclipse_thread = None
         self.eclipse_worker = None
+        self.sun_outage_thread = None
+        self.sun_outage_worker = None
+        self.sun_outage_prediction = None
         self.eclipse_prediction_result = None
         self.eclipse_initial_epoch = None
         self.yearly_eclipse_schedule = None
@@ -4697,12 +4732,12 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         register_session_eclipse_reference_datasets(
             content.eclipse_reference_datasets
         )
-        if ORBIT_DETERMINATION_UI_ENABLED:
-            register_session_orbit_determination_datasets(
-                content.orbit_determination_datasets
-            )
-        else:
-            clear_session_orbit_determination_datasets()
+        # The OD workspace can remain hidden while its validated, data-only
+        # station catalogue supplies the Sun-outage tool.  Coordinates stay
+        # memory-only and are cleared on logout below.
+        register_session_orbit_determination_datasets(
+            content.orbit_determination_datasets
+        )
         self.refresh_profile_selector()
         if hasattr(self, "reference_dataset_combo"):
             populate_reference_scenario_combo(
@@ -4712,6 +4747,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             self._reference_selected_dataset_id = None
             self.reference_dataset_changed()
         self._refresh_eclipse_reference_selector()
+        self.refresh_sun_outage_stations()
         if hasattr(self, "od_dataset_summary"):
             self.reload_orbit_determination_dataset(reset_arc=True)
         self._clear_admin_module_pages()
@@ -4783,6 +4819,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         for thread in (
             getattr(self, "propagation_thread", None),
             getattr(self, "eclipse_thread", None),
+            getattr(self, "sun_outage_thread", None),
             getattr(self, "reference_comparison_thread", None),
             getattr(self, "orbit_determination_thread", None),
         ):
@@ -4824,6 +4861,13 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.eclipse_prediction_result = None
         self.eclipse_reference_interval_prediction = None
         self.yearly_eclipse_schedule = None
+        self.sun_outage_prediction = None
+        if hasattr(self, "sun_outage_table"):
+            self.sun_outage_table.setRowCount(0)
+            self.sun_outage_export_button.setEnabled(False)
+            self.sun_outage_summary.setText(
+                "Choose the receiving link parameters and calculate the yearly schedule."
+            )
         if hasattr(self, "reference_dataset_combo"):
             populate_reference_scenario_combo(
                 self.reference_dataset_combo,
@@ -4832,6 +4876,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             self._reference_selected_dataset_id = None
             self.reference_dataset_changed()
         self._refresh_eclipse_reference_selector()
+        self.refresh_sun_outage_stations()
         if hasattr(self, "od_dataset_summary"):
             self.reload_orbit_determination_dataset(reset_arc=True)
         if hasattr(self, "clear_product_results"):
@@ -12435,8 +12480,422 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.update_eclipse_reference_interval_label()
 
         scroll.setWidget(content)
-        page_layout.addWidget(scroll)
+        self.eclipse_workspace_tabs = QTabWidget()
+        self.eclipse_workspace_tabs.setObjectName("eclipseWorkspaceTabs")
+        self.eclipse_workspace_tabs.addTab(scroll, "ECLIPSE PREDICTION")
+        self.sun_outage_page = self.create_sun_outage_page()
+        self.eclipse_workspace_tabs.addTab(self.sun_outage_page, "SUN OUTAGE")
+        page_layout.addWidget(self.eclipse_workspace_tabs)
         return page
+
+
+    def create_sun_outage_page(self):
+        """Build the ITU-R S.1525-1 GSO Sun-transit workspace."""
+
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(12, 10, 12, 16)
+        layout.setSpacing(14)
+
+        description = QLabel(
+            "Predict when the Sun crosses the receiving antenna beam behind "
+            "the active GEO slot. Times use WGS-84 station geometry and the "
+            "JPL DE440 apparent Sun direction."
+        )
+        description.setWordWrap(True)
+        description.setObjectName("metricDetail")
+        layout.addWidget(description)
+
+        inputs_box = QGroupBox("SUN OUTAGE INPUTS — ITU-R S.1525-1")
+        inputs = QGridLayout(inputs_box)
+        inputs.setContentsMargins(18, 28, 18, 18)
+        inputs.setHorizontalSpacing(12)
+        inputs.setVerticalSpacing(10)
+
+        self.sun_outage_station_combo = QComboBox()
+        self.sun_outage_station_combo.setMinimumWidth(280)
+        self.sun_outage_station_combo.currentIndexChanged.connect(
+            self.update_sun_outage_station_summary
+        )
+        self.sun_outage_year = QSpinBox()
+        self.sun_outage_year.setRange(2000, 2100)
+        self.sun_outage_year.setValue(get_current_utc().year)
+        self.sun_outage_frequency = QDoubleSpinBox()
+        self.sun_outage_frequency.setRange(0.1, 100.0)
+        self.sun_outage_frequency.setDecimals(3)
+        self.sun_outage_frequency.setValue(11.0)
+        self.sun_outage_frequency.setSuffix(" GHz")
+        self.sun_outage_antenna_diameter = QDoubleSpinBox()
+        self.sun_outage_antenna_diameter.setRange(0.1, 100.0)
+        self.sun_outage_antenna_diameter.setDecimals(3)
+        self.sun_outage_antenna_diameter.setValue(3.7)
+        self.sun_outage_antenna_diameter.setSuffix(" m")
+        self.sun_outage_satellite_longitude = QDoubleSpinBox()
+        self.sun_outage_satellite_longitude.setRange(-180.0, 180.0)
+        self.sun_outage_satellite_longitude.setDecimals(6)
+        self.sun_outage_satellite_longitude.setSuffix(" °E")
+        self.sun_outage_satellite_longitude.setReadOnly(True)
+        self.sun_outage_satellite_longitude.setButtonSymbols(
+            QAbstractSpinBox.ButtonSymbols.NoButtons
+        )
+
+        inputs.addWidget(QLabel("Ground station:"), 0, 0)
+        inputs.addWidget(self.sun_outage_station_combo, 0, 1, 1, 3)
+        inputs.addWidget(QLabel("Year:"), 0, 4)
+        inputs.addWidget(self.sun_outage_year, 0, 5)
+        inputs.addWidget(QLabel("Downlink frequency:"), 1, 0)
+        inputs.addWidget(self.sun_outage_frequency, 1, 1)
+        inputs.addWidget(QLabel("Antenna diameter:"), 1, 2)
+        inputs.addWidget(self.sun_outage_antenna_diameter, 1, 3)
+        inputs.addWidget(QLabel("Active GEO slot:"), 1, 4)
+        inputs.addWidget(self.sun_outage_satellite_longitude, 1, 5)
+
+        self.sun_outage_station_summary = QLabel()
+        self.sun_outage_station_summary.setWordWrap(True)
+        self.sun_outage_station_summary.setObjectName("metricDetail")
+        inputs.addWidget(self.sun_outage_station_summary, 2, 0, 1, 6)
+        link_note = QLabel(
+            "Frequency and antenna diameter must match the receiving link. "
+            "The result is the Sun-disc + 3 dB beam intersection window; an "
+            "actual carrier outage also depends on link margin and solar flux."
+        )
+        link_note.setWordWrap(True)
+        _set_status_role(link_note, "warning")
+        inputs.addWidget(link_note, 3, 0, 1, 6)
+        layout.addWidget(inputs_box)
+
+        actions = QHBoxLayout()
+        self.sun_outage_calculate_button = QPushButton("CALCULATE SUN OUTAGE")
+        self.sun_outage_calculate_button.setObjectName("primaryAction")
+        self.sun_outage_calculate_button.clicked.connect(
+            self.run_sun_outage_prediction
+        )
+        self.sun_outage_cancel_button = QPushButton("CANCEL")
+        self.sun_outage_cancel_button.setObjectName("dangerAction")
+        self.sun_outage_cancel_button.setEnabled(False)
+        self.sun_outage_cancel_button.clicked.connect(
+            self.cancel_sun_outage_prediction
+        )
+        self.sun_outage_export_button = QPushButton("EXPORT SUN OUTAGE CSV")
+        self.sun_outage_export_button.setEnabled(False)
+        self.sun_outage_export_button.clicked.connect(self.export_sun_outage_csv)
+        actions.addWidget(self.sun_outage_calculate_button)
+        actions.addWidget(self.sun_outage_cancel_button)
+        actions.addWidget(self.sun_outage_export_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        self.sun_outage_progress = QProgressBar()
+        self.sun_outage_progress.setRange(0, 100)
+        self.sun_outage_progress.setValue(0)
+        self.sun_outage_progress.setFormat("Ready")
+        layout.addWidget(self.sun_outage_progress)
+
+        results_box = QGroupBox("PREDICTED SUN OUTAGE WINDOWS")
+        results = QVBoxLayout(results_box)
+        results.setContentsMargins(14, 24, 14, 14)
+        self.sun_outage_summary = QLabel(
+            "Choose the receiving link parameters and calculate the yearly schedule."
+        )
+        self.sun_outage_summary.setWordWrap(True)
+        self.sun_outage_summary.setObjectName("metricDetail")
+        results.addWidget(self.sun_outage_summary)
+
+        self.sun_outage_table = QTableWidget(0, 8)
+        self.sun_outage_table.setHorizontalHeaderLabels(
+            (
+                "Date UTC",
+                "Start UTC",
+                "Peak UTC",
+                "End UTC",
+                "Peak Baku (UTC+4)",
+                "Duration",
+                "Min. separation",
+                "Risk threshold",
+            )
+        )
+        self.sun_outage_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.sun_outage_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.sun_outage_table.verticalHeader().setVisible(False)
+        header = self.sun_outage_table.horizontalHeader()
+        for column in range(8):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+        self.sun_outage_table.setMinimumHeight(300)
+        results.addWidget(self.sun_outage_table)
+
+        provenance = QLabel(
+            "Method: ITU-R S.1525-1 Annex 2 beam geometry, WGS-84 Earth "
+            "station, fixed nominal GSO slot and JPL DE440 apparent Sun. "
+            "No eclipse or propagation result is modified."
+        )
+        provenance.setWordWrap(True)
+        provenance.setObjectName("metricDetail")
+        results.addWidget(provenance)
+        layout.addWidget(results_box)
+        layout.addStretch(1)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        self.refresh_sun_outage_stations()
+        self.refresh_sun_outage_profile()
+        return page
+
+
+    def refresh_sun_outage_stations(self):
+        selector = getattr(self, "sun_outage_station_combo", None)
+        if selector is None:
+            return
+        selected = selector.currentData()
+        station_map = {}
+        selector.blockSignals(True)
+        selector.clear()
+        for dataset_id, station in available_ground_stations():
+            key = f"{dataset_id}:{station.station_id}"
+            station_map[key] = station
+            selector.addItem(station.name, key)
+        self._sun_outage_station_by_key = station_map
+        index = selector.findData(selected)
+        selector.setCurrentIndex(index if index >= 0 else 0)
+        selector.blockSignals(False)
+        self.update_sun_outage_station_summary()
+
+
+    def refresh_sun_outage_profile(self):
+        control = getattr(self, "sun_outage_satellite_longitude", None)
+        if control is None:
+            return
+        control.setValue(float(self.active_profile.target_longitude_deg))
+        control.setToolTip(
+            f"{self.active_profile.display_name} nominal Earth-fixed GEO slot."
+        )
+
+
+    def update_sun_outage_station_summary(self, _index=None):
+        label = getattr(self, "sun_outage_station_summary", None)
+        selector = getattr(self, "sun_outage_station_combo", None)
+        if label is None or selector is None:
+            return
+        station = getattr(self, "_sun_outage_station_by_key", {}).get(
+            selector.currentData()
+        )
+        if station is None:
+            label.setText("No ground station is available.")
+            return
+        label.setText(
+            f"Selected station: {station.name} · WGS-84 "
+            f"{station.latitude_deg:+.6f}°, {station.longitude_deg:+.6f}° · "
+            f"height {station.height_km:.3f} km. "
+            "Admin coordinates remain memory-only and are removed on logout."
+        )
+
+
+    def run_sun_outage_prediction(self):
+        if self.sun_outage_thread is not None and self.sun_outage_thread.isRunning():
+            return
+        if self.eclipse_thread is not None and self.eclipse_thread.isRunning():
+            self.sun_outage_summary.setText(
+                "Wait for the Eclipse calculation to finish or cancel it first."
+            )
+            return
+        station = getattr(self, "_sun_outage_station_by_key", {}).get(
+            self.sun_outage_station_combo.currentData()
+        )
+        if station is None:
+            self.sun_outage_summary.setText(
+                "SUN OUTAGE INPUT ERROR: no ground station is available."
+            )
+            return
+        parameters = {
+            "year": int(self.sun_outage_year.value()),
+            "station": SunOutageStation(
+                station_id=station.station_id,
+                name=station.name,
+                latitude_deg=station.latitude_deg,
+                longitude_deg=station.longitude_deg,
+                height_km=station.height_km,
+            ),
+            "satellite_longitude_deg": float(
+                self.sun_outage_satellite_longitude.value()
+            ),
+            "frequency_ghz": float(self.sun_outage_frequency.value()),
+            "antenna_diameter_m": float(
+                self.sun_outage_antenna_diameter.value()
+            ),
+            "eop_enabled": is_eop_enabled(),
+        }
+        self.sun_outage_prediction = None
+        self.sun_outage_table.setRowCount(0)
+        self.sun_outage_export_button.setEnabled(False)
+        self.sun_outage_calculate_button.setEnabled(False)
+        self.sun_outage_cancel_button.setEnabled(True)
+        self.sun_outage_progress.setValue(0)
+        self.sun_outage_progress.setFormat("Searching equinox seasons · %p%")
+        self.sun_outage_summary.setText(
+            "SUN OUTAGE SEARCH RUNNING\n"
+            f"Station: {station.name} · Spacecraft: "
+            f"{self.active_profile.display_name} · "
+            f"slot {parameters['satellite_longitude_deg']:+.6f}°E"
+        )
+
+        self.sun_outage_thread = QThread(self)
+        self.sun_outage_worker = SunOutageWorker(parameters)
+        self.sun_outage_worker.moveToThread(self.sun_outage_thread)
+        self.sun_outage_thread.started.connect(self.sun_outage_worker.run)
+        self.sun_outage_worker.progress.connect(self.sun_outage_progress.setValue)
+        self.sun_outage_worker.completed.connect(self.finish_sun_outage_prediction)
+        self.sun_outage_worker.failed.connect(self.fail_sun_outage_prediction)
+        self.sun_outage_worker.cancelled.connect(
+            self.cancelled_sun_outage_prediction
+        )
+        self.sun_outage_worker.completed.connect(self.sun_outage_thread.quit)
+        self.sun_outage_worker.failed.connect(self.sun_outage_thread.quit)
+        self.sun_outage_worker.cancelled.connect(self.sun_outage_thread.quit)
+        self.sun_outage_thread.finished.connect(
+            self.sun_outage_worker.deleteLater
+        )
+        self.sun_outage_thread.finished.connect(
+            self.sun_outage_thread.deleteLater
+        )
+        self.sun_outage_thread.finished.connect(
+            self.cleanup_sun_outage_prediction
+        )
+        self.sun_outage_thread.start()
+
+
+    @staticmethod
+    def _sun_outage_time_text(value):
+        return value.astimezone(timezone.utc).strftime("%H:%M:%S")
+
+
+    def finish_sun_outage_prediction(self, prediction):
+        self.sun_outage_prediction = prediction
+        self.sun_outage_table.setRowCount(len(prediction.events))
+        baku_offset = timezone(timedelta(hours=4))
+        for row, event in enumerate(prediction.events):
+            values = (
+                event.peak_utc.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+                self._sun_outage_time_text(event.start_utc),
+                self._sun_outage_time_text(event.peak_utc),
+                self._sun_outage_time_text(event.end_utc),
+                event.peak_utc.astimezone(baku_offset).strftime("%H:%M:%S"),
+                f"{event.duration_seconds / 60.0:.2f} min",
+                f"{event.minimum_separation_deg:.6f}°",
+                f"{event.threshold_deg:.6f}°",
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.sun_outage_table.setItem(row, column, item)
+        self.sun_outage_progress.setValue(100)
+        self.sun_outage_progress.setFormat("Completed")
+        self.sun_outage_calculate_button.setEnabled(True)
+        self.sun_outage_cancel_button.setEnabled(False)
+        self.sun_outage_export_button.setEnabled(bool(prediction.events))
+        if prediction.events:
+            shortest = min(
+                event.minimum_separation_deg for event in prediction.events
+            )
+            longest = max(event.duration_seconds for event in prediction.events)
+            self.sun_outage_summary.setText(
+                f"{len(prediction.events)} interference-risk windows found for "
+                f"{prediction.station.name} and "
+                f"{self.active_profile.display_name} "
+                f"({prediction.satellite_longitude_deg:+.6f}°E). "
+                f"3 dB beamwidth: {prediction.beamwidth_3db_deg:.6f}°. "
+                f"Closest alignment: {shortest:.6f}°. "
+                f"Longest window: {longest / 60.0:.2f} min. "
+                "Times are geometric risk windows, not guaranteed carrier outages."
+            )
+        else:
+            self.sun_outage_summary.setText(
+                "No Sun-disc/3 dB-beam intersection was found for the selected "
+                "year, station, GEO slot and receiving-link parameters."
+            )
+        self.statusBar().showMessage(
+            f"Sun-outage calculation completed: {len(prediction.events)} windows",
+            8000,
+        )
+
+
+    def cancel_sun_outage_prediction(self):
+        if self.sun_outage_thread is None or not self.sun_outage_thread.isRunning():
+            return
+        self.sun_outage_thread.requestInterruption()
+        self.sun_outage_cancel_button.setEnabled(False)
+        self.sun_outage_progress.setFormat("Cancelling...")
+
+
+    def fail_sun_outage_prediction(self, message):
+        self.sun_outage_summary.setText("SUN OUTAGE ERROR\n" + str(message))
+        self.sun_outage_progress.setFormat("Failed")
+        self.sun_outage_calculate_button.setEnabled(True)
+        self.sun_outage_cancel_button.setEnabled(False)
+        self.sun_outage_export_button.setEnabled(False)
+
+
+    def cancelled_sun_outage_prediction(self):
+        self.sun_outage_prediction = None
+        self.sun_outage_summary.setText(
+            "SUN OUTAGE SEARCH CANCELLED\nNo partial schedule was stored."
+        )
+        self.sun_outage_progress.setFormat("Cancelled")
+        self.sun_outage_calculate_button.setEnabled(True)
+        self.sun_outage_cancel_button.setEnabled(False)
+        self.sun_outage_export_button.setEnabled(False)
+
+
+    def cleanup_sun_outage_prediction(self):
+        self.sun_outage_worker = None
+        self.sun_outage_thread = None
+
+
+    def export_sun_outage_csv(self):
+        prediction = self.sun_outage_prediction
+        if prediction is None:
+            self.sun_outage_summary.setText(
+                "SUN OUTAGE CSV EXPORT ERROR\nCalculate the schedule first."
+            )
+            return
+        default_name = (
+            f"sun_outage_{prediction.year}_"
+            + re.sub(r"[^a-z0-9]+", "_", prediction.station.name.lower()).strip("_")
+            + ".csv"
+        )
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Export Sun Outage CSV"),
+            default_name,
+            "CSV Files (*.csv);;All Files (*)",
+            options=theme.file_dialog_options(),
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".csv"):
+            file_path += ".csv"
+        try:
+            exported = save_sun_outage_csv(prediction, file_path)
+        except Exception as error:
+            self.sun_outage_summary.setText(
+                "SUN OUTAGE CSV EXPORT ERROR\n"
+                f"{type(error).__name__}: {error}"
+            )
+            return
+        self.statusBar().showMessage(
+            f"Sun-outage CSV export completed: {exported.name}",
+            10000,
+        )
 
 
     def create_orbit_determination_workspace(self):
@@ -17065,6 +17524,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             self.eclipse_thread.wait(3000)
 
         if (
+            self.sun_outage_thread is not None
+            and self.sun_outage_thread.isRunning()
+        ):
+            self.sun_outage_thread.requestInterruption()
+            self.sun_outage_thread.quit()
+            self.sun_outage_thread.wait(3000)
+
+        if (
             self.reference_comparison_thread is not None
             and self.reference_comparison_thread.isRunning()
         ):
@@ -17106,6 +17573,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             ("Propagation", self.propagation_thread),
             ("Perturbation prediction", self.graph_prediction_thread),
             ("Eclipse", self.eclipse_thread),
+            ("Sun Outage", self.sun_outage_thread),
             ("Reference Lab", self.reference_comparison_thread),
             ("Orbit Determination", self.orbit_determination_thread),
             ("TLE update", self.tle_update_thread),

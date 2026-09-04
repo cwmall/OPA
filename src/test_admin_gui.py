@@ -91,10 +91,18 @@ class AdminGuiTests(unittest.TestCase):
             len(load_eclipse_reference_dataset("admin-synthetic-eclipse").events),
             1,
         )
-        self.assertEqual(load_dataset().dataset_id, "synthetic-od-demo-v1")
+        self.assertEqual(load_dataset().dataset_id, "admin-synthetic-od")
+        self.assertIn(
+            "SYNTHETIC GROUND STATION",
+            [
+                self.window.sun_outage_station_combo.itemText(index)
+                for index in range(self.window.sun_outage_station_combo.count())
+            ],
+        )
         self.assertFalse(hasattr(self.window, "orbit_determination_page"))
         self.assertEqual(self.window.module_tabs.count(), public_module_count + 1)
         self.assertTrue(self.window.activate_profile("admin-synthetic-demo"))
+        self.window.sun_outage_prediction = object()
 
         self.window.logout_admin_session()
         self.assertFalse(self.window.admin_session.unlocked)
@@ -106,6 +114,14 @@ class AdminGuiTests(unittest.TestCase):
         }
         self.assertNotIn("admin-synthetic-eclipse", eclipse_ids)
         self.assertEqual(load_dataset().dataset_id, "synthetic-od-demo-v1")
+        self.assertIsNone(self.window.sun_outage_prediction)
+        self.assertNotIn(
+            "SYNTHETIC GROUND STATION",
+            [
+                self.window.sun_outage_station_combo.itemText(index)
+                for index in range(self.window.sun_outage_station_combo.count())
+            ],
+        )
         self.assertEqual(self.window.module_tabs.count(), public_module_count)
         self.assertEqual(self.window.active_profile_id, "synthetic_geo_demo")
 

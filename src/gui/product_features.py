@@ -584,6 +584,8 @@ class ProductFeatureMixin:
                 )
         if hasattr(self, "geo_target_longitude"):
             self._apply_profile_geo_defaults()
+        if hasattr(self, "refresh_sun_outage_profile"):
+            self.refresh_sun_outage_profile()
         if self.current_project is not None and not self._applying_product_state:
             self.mark_project_dirty()
         if previous_profile_id != profile.profile_id:

@@ -174,6 +174,28 @@ def register_session_orbit_determination_datasets(datasets):
         _SESSION_ORBIT_DETERMINATION_DATASETS[dataset.dataset_id] = dataset
 
 
+def available_ground_stations():
+    """Return session stations, or fictional public stations while locked.
+
+    Admin coordinates remain in memory and are removed by
+    ``clear_session_orbit_determination_datasets``.  The stable dataset/station
+    key lets GUI selectors distinguish equal station identifiers in different
+    datasets without persisting any private location.
+    """
+
+    datasets = tuple(_SESSION_ORBIT_DETERMINATION_DATASETS.values())
+    if not datasets:
+        datasets = (_synthetic_dataset(),)
+    return tuple(
+        (dataset.dataset_id, station)
+        for dataset in datasets
+        for station in sorted(
+            dataset.stations.values(),
+            key=lambda item: (item.name.casefold(), item.station_id.casefold()),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class ResidualSummary:
     station_id: str

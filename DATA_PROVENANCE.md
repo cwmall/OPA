@@ -15,6 +15,15 @@ Official source/rules:
 - IERS product metadata: <https://datacenter.iers.org/versionMetadata.php?filename=latestVersionMeta%2F9_FINALS.ALL_IAU2000_V2013_019.txt>
 - USNO distribution statement: <https://maia.usno.navy.mil/products/daily.htm>
 
+## Sun-outage methodology
+
+The GSO Sun-transit workspace uses the antenna half-power beamwidth estimate
+and transit geometry documented in ITU-R Recommendation S.1525-1, Annex 2:
+<https://www.itu.int/rec/R-REC-S.1525/en>. The time-varying apparent Sun
+direction is calculated from the bundled JPL DE440 kernel. Results identify
+the geometric intersection of the solar disc and the receiving antenna's 3 dB
+beam; they are not a carrier-specific link-budget outage guarantee.
+
 ## Assets
 
 The public mark `assets/opa_public_mark.svg` and Retro control SVGs are original repository-native geometry. The application owner selected the established generic OPA emblem and mission-banner raster artwork for the product identity; these files contain no operator name or embedded text metadata. Their original authorship and redistribution grant have not yet been independently verified, so they remain part of the manual ownership/licensing gate below.
