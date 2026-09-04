@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.45.0 — 2026-09-04
+
+- Added a graph-local Full Screen control to the Perturbation page.
+- Full Screen hides the complete application shell and leaves only the live graph visible; Escape restores the exact previous window state.
+- Added matching Normal, Retro, English, and Azerbaijani presentation.
+
+## 2.44.1 — 2026-09-04
+
+- Anchored Perturbation prediction to the selected spacecraft state and epoch instead of the default TLE.
+- Applied the active profile's effective area, mass, and CP consistently to both live and predicted SRP.
+- Kept Perturbation controls permanently visible and made the graph fill the remaining page without whole-page scrolling.
+
+## 2.44.0 — 2026-09-04
+
+- Moved the expensive past/future Perturbation prediction off the Qt GUI thread without changing its numerical model, settings, sampling, or outputs.
+- Added live prediction progress and safe cancellation while keeping the application responsive.
+- Reorganized Perturbation controls into compact filter/action rows and made the graph fit common laptop work areas.
+- Added Azerbaijani text for the new background-calculation states.
+
 ## 2.43.5 — 2026-09-01
 
 - Renamed the distributable repository folder and desktop launcher to Orbital Perturbation Analyzer branding.

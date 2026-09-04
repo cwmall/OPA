@@ -340,6 +340,7 @@ from perturbation_analysis import (
     PERTURBATION_PARAMETERS,
     acceleration_components,
 )
+from graph_prediction import compute_perturbation_prediction
 from orbital_elements import cartesian_to_keplerian
 from orbit_determination import (
     OrbitDeterminationCancelled,
@@ -784,6 +785,38 @@ class PropagationWorker(QObject):
             self.failed.emit(
                 f"{type(error).__name__}: {error}"
             )
+
+
+class GraphPredictionWorker(QObject):
+
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(int)
+
+    def __init__(self, parameters):
+        super().__init__()
+        self.parameters = parameters
+        self._last_progress = -1
+
+    def _emit_progress(self, value):
+        value = int(value)
+        if value != self._last_progress:
+            self._last_progress = value
+            self.progress.emit(value)
+
+    def run(self):
+        try:
+            result = compute_perturbation_prediction(
+                **self.parameters,
+                cancel_check=self.thread().isInterruptionRequested,
+                progress_callback=self._emit_progress,
+            )
+            self.completed.emit(result)
+        except PropagationCancelled:
+            self.cancelled.emit()
+        except Exception as error:
+            self.failed.emit(f"{type(error).__name__}: {error}")
 
 
 class OrbitDeterminationWorker(QObject):
@@ -3633,6 +3666,8 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.system_view_pitch = 25.0
         self.system_view_zoom = 1.0
         self._orbital_theater_mode = False
+        self._graph_only_mode = False
+        self._graph_fullscreen_restore = None
         self._window_restore_maximized = False
 
         self.analysis_fixed_epoch = None
@@ -3641,6 +3676,9 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.live_log_path = None
         self.propagation_thread = None
         self.propagation_worker = None
+        self.graph_prediction_thread = None
+        self.graph_prediction_worker = None
+        self._graph_prediction_timer_was_active = False
         self.eclipse_thread = None
         self.eclipse_worker = None
         self.eclipse_prediction_result = None
@@ -3759,6 +3797,12 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         return None
 
     def eventFilter(self, watched, event):
+
+        if (
+            watched is getattr(self, "graph", None)
+            and event.type() == QEvent.Type.Resize
+        ):
+            QTimer.singleShot(0, self.position_graph_fullscreen_button)
 
         if event.type() == QEvent.Type.MouseButtonPress:
             clicked_canvas = None
@@ -4402,21 +4446,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             )
 
         if hasattr(self, "graph_action_buttons"):
-            if retro:
-                for button in self.graph_action_buttons:
-                    if self.graph_primary_controls_layout.indexOf(button) >= 0:
-                        self.graph_primary_controls_layout.removeWidget(button)
-                        self.graph_action_controls_layout.addWidget(button)
-                self.graph_action_controls_host.show()
-            else:
-                for button in self.graph_action_buttons:
-                    if self.graph_action_controls_layout.indexOf(button) >= 0:
-                        self.graph_action_controls_layout.removeWidget(button)
-                        self.graph_primary_controls_layout.insertWidget(
-                            max(0, self.graph_primary_controls_layout.count() - 1),
-                            button,
-                        )
-                self.graph_action_controls_host.hide()
+            # Keep filters and actions on separate compact rows in both
+            # themes.  A single row overflowed laptop-width work areas and
+            # made prediction/navigation buttons unreachable.
+            for button in self.graph_action_buttons:
+                if self.graph_primary_controls_layout.indexOf(button) >= 0:
+                    self.graph_primary_controls_layout.removeWidget(button)
+                    self.graph_action_controls_layout.addWidget(button)
+            self.graph_action_controls_host.show()
         if hasattr(self, "system_fullscreen_button"):
             self.system_fullscreen_button.setText(
                 "FULL SCREEN" if retro else "FULL SCREEN  [F11]"
@@ -5165,23 +5202,20 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         page = QWidget()
         self.graph_page = page
 
-        outer_layout = QVBoxLayout(page)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        self.graph_page_scroll = QScrollArea()
-        self.graph_page_scroll.setWidgetResizable(True)
-        self.graph_page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.graph_page_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        graph_content = QWidget()
-        layout = QVBoxLayout(graph_content)
-        layout.setContentsMargins(12, 10, 12, 16)
+        # Controls stay fixed above the graph.  The previous whole-page scroll
+        # surface let normal mouse-wheel use push every control off-screen and
+        # made a standard desktop viewport look clipped.
+        layout = QVBoxLayout(page)
+        self.graph_page_layout = layout
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(5)
 
         # ----------------------------------------------------
         # CONTROLS
         # ----------------------------------------------------
 
         controls_host = QWidget()
+        self.graph_controls_host = controls_host
         controls_host_layout = QVBoxLayout(controls_host)
         controls_host_layout.setContentsMargins(0, 0, 0, 0)
         controls_host_layout.setSpacing(3)
@@ -5333,9 +5367,8 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         self.graph_prediction_status.setWordWrap(True)
         self.graph_prediction_status.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
         )
-        self.graph_prediction_status.setMaximumHeight(42)
         layout.addWidget(
             self.graph_prediction_status
         )
@@ -5345,7 +5378,30 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         # ----------------------------------------------------
 
         self.graph = GraphWidget()
-        self.graph.setMinimumHeight(520)
+        # A 520 px hard minimum forced the controls off-screen on common
+        # 768/1080 px desktop work areas.  The canvas remains expandable but
+        # can now share the available viewport with its controls.
+        self.graph.setMinimumHeight(160)
+        self.graph.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.graph.setToolTip("")
+
+        self.graph_fullscreen_button = QPushButton(
+            "FULL SCREEN",
+            self.graph,
+        )
+        self.graph_fullscreen_button.setObjectName("graphOverlayAction")
+        self.graph_fullscreen_button.setToolTip(
+            "Show only this graph. Press Esc to return."
+        )
+        self.graph_fullscreen_button.clicked.connect(
+            self.toggle_graph_full_screen
+        )
+        self.graph_fullscreen_button.adjustSize()
+        self.graph.installEventFilter(self)
+        QTimer.singleShot(0, self.position_graph_fullscreen_button)
 
         self.graph.mpl_connect(
             "scroll_event",
@@ -5367,9 +5423,6 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         layout.addWidget(
             self.graph
         )
-
-        self.graph_page_scroll.setWidget(graph_content)
-        outer_layout.addWidget(self.graph_page_scroll)
 
         self.graph_tab_index = self.tabs.addTab(
             page,
@@ -5831,6 +5884,101 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         )
 
 
+    def position_graph_fullscreen_button(self):
+
+        button = getattr(self, "graph_fullscreen_button", None)
+        graph = getattr(self, "graph", None)
+        if button is None or graph is None:
+            return
+        button.setMinimumSize(104, 28)
+        button.adjustSize()
+        button.move(10, 10)
+        button.raise_()
+
+
+    def refresh_graph_layout_after_view_change(self):
+
+        graph = getattr(self, "graph", None)
+        if graph is None:
+            return
+        try:
+            graph.figure.tight_layout(pad=1.0)
+        except (RuntimeError, ValueError):
+            # A transient zero-sized canvas during a native window-state
+            # transition is harmless; the next graph update will lay it out.
+            pass
+        graph.draw_idle()
+        self.position_graph_fullscreen_button()
+
+
+    def toggle_graph_full_screen(self):
+        """Show only the active Perturbation graph and restore it safely."""
+
+        if self._graph_only_mode:
+            restore = self._graph_fullscreen_restore or {}
+            self._graph_only_mode = False
+            for widget, was_visible in restore.get("widgets", ()):
+                widget.setVisible(was_visible)
+            self.main_layout.setContentsMargins(
+                *restore.get("main_margins", (18, 14, 18, 18))
+            )
+            self.main_layout.setSpacing(restore.get("main_spacing", 14))
+            self.graph_page_layout.setContentsMargins(
+                *restore.get("graph_margins", (12, 8, 12, 8))
+            )
+            self.graph_page_layout.setSpacing(
+                restore.get("graph_spacing", 5)
+            )
+            if restore.get("was_fullscreen", False):
+                self.showFullScreen()
+            elif restore.get("was_maximized", False):
+                self.showMaximized()
+            else:
+                self.showNormal()
+            self.graph_fullscreen_button.setText("FULL SCREEN")
+            self.graph_fullscreen_button.setToolTip(
+                "Show only this graph. Press Esc to return."
+            )
+            self._graph_fullscreen_restore = None
+        else:
+            widgets = (
+                self.menuBar(),
+                self.hero_card,
+                self.product_command_bar,
+                self.module_tabs.tabBar(),
+                self.tabs.tabBar(),
+                self.graph_controls_host,
+                self.graph_prediction_status,
+                self.statusBar(),
+            )
+            self._graph_fullscreen_restore = {
+                "widgets": tuple(
+                    (widget, widget.isVisible()) for widget in widgets
+                ),
+                "main_margins": self.main_layout.getContentsMargins(),
+                "main_spacing": self.main_layout.spacing(),
+                "graph_margins": self.graph_page_layout.getContentsMargins(),
+                "graph_spacing": self.graph_page_layout.spacing(),
+                "was_fullscreen": self.isFullScreen(),
+                "was_maximized": self.isMaximized(),
+            }
+            self._graph_only_mode = True
+            for widget in widgets:
+                widget.hide()
+            self.main_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.setSpacing(0)
+            self.graph_page_layout.setContentsMargins(0, 0, 0, 0)
+            self.graph_page_layout.setSpacing(0)
+            self.graph_fullscreen_button.setText("EXIT  [ESC]")
+            self.graph_fullscreen_button.setToolTip(
+                "Return to the complete application."
+            )
+            self.showFullScreen()
+
+        QTimer.singleShot(0, self.safe_update_graph)
+        QTimer.singleShot(0, self.refresh_graph_layout_after_view_change)
+
+
     def toggle_orbital_theater_mode(self):
 
         self._orbital_theater_mode = not self._orbital_theater_mode
@@ -5864,6 +6012,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
     def keyPressEvent(self, event):
 
         if event.key() == Qt.Key.Key_Escape:
+            if self._graph_only_mode:
+                self.toggle_graph_full_screen()
+                event.accept()
+                return
             if self._orbital_theater_mode:
                 self.toggle_orbital_theater_mode()
                 event.accept()
@@ -6427,6 +6579,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
         active_threads = (
             self.propagation_thread,
+            self.graph_prediction_thread,
             self.eclipse_thread,
             self.reference_comparison_thread,
         )
@@ -7272,33 +7425,23 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
     def run_graph_prediction(self):
 
+        if (
+            self.graph_prediction_thread is not None
+            and self.graph_prediction_thread.isRunning()
+        ):
+            self.graph_prediction_thread.requestInterruption()
+            self.predict_graph_button.setEnabled(False)
+            self.predict_graph_button.setText("CANCELLING...")
+            self.graph_prediction_status.setText(
+                "Cancelling perturbation prediction..."
+            )
+            return
+
         selected_range = self.time_range.currentText()
-
-        range_hours = {
-            "1 Hour": 1,
-            "6 Hours": 6,
-            "24 Hours": 24,
-        }
-
-        hours = range_hours.get(
-            selected_range,
-            24,
+        hours = {"1 Hour": 1, "6 Hours": 6, "24 Hours": 24}.get(
+            selected_range, 24
         )
-
-        # Keep roughly 240-300 points across the complete past/future
-        # overlay. This is smooth on screen without making the numerical
-        # integration unnecessarily heavy.
-        output_steps = {
-            1: 30.0,
-            6: 180.0,
-            24: 600.0,
-        }
-
-        output_step = output_steps[hours]
-        duration_seconds = float(
-            hours * 3600
-        )
-        numerical_settings = self.get_numerical_settings()
+        output_step = {1: 30.0, 6: 180.0, 24: 600.0}[hours]
         requested_sources = [
             name
             for name, checkbox in (
@@ -7319,273 +7462,184 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             "SRP" in requested_sources or "Combined" in requested_sources
         )
 
-        srp_coefficient = None
-        srp_prediction_note = ""
-        if propagate_srp:
-            srp_coefficient, srp_mode = resolved_solar_pressure_coefficient(
-                self.get_analysis_utc()
-            )
-            srp_prediction_note = (
-                f" SRP: {srp_mode}, CP {srp_coefficient:.7f}."
-            )
-
-        self.predict_graph_button.setEnabled(
-            False
-        )
-        self.predict_graph_button.setText(
-            "CALCULATING..."
-        )
-        self.graph_prediction_status.setText(
-            "Propagating orbit backward and forward..."
-        )
-
-        timer_was_active = self.timer.isActive()
-        self.timer.stop()
-        QApplication.processEvents()
-
         try:
-            epoch = self.get_analysis_utc()
-
-            initial_state = get_tle_initial_state(
-                epoch
+            requested_epoch = self.get_analysis_utc()
+            initial_state, epoch = self.active_spacecraft_state(
+                requested_epoch
             )
-
-            past_times, past_states = propagate_trajectory(
-                initial_state=initial_state,
-                initial_epoch=epoch,
-                duration_seconds=-duration_seconds,
-                output_step=output_step,
-                include_j2=True,
-                include_moon=propagate_moon,
-                include_sun=propagate_sun,
-                include_srp=propagate_srp,
-                srp_coefficient=srp_coefficient,
-                **numerical_settings,
-            )
-
-            future_times, future_states = propagate_trajectory(
-                initial_state=initial_state,
-                initial_epoch=epoch,
-                duration_seconds=duration_seconds,
-                output_step=output_step,
-                include_j2=True,
-                include_moon=propagate_moon,
-                include_sun=propagate_sun,
-                include_srp=propagate_srp,
-                srp_coefficient=srp_coefficient,
-                **numerical_settings,
-            )
-
-            relaxed_settings = {
-                "rtol": numerical_settings["rtol"] * 100.0,
-                "atol": numerical_settings["atol"] * 100.0,
-                "max_step": min(
-                    numerical_settings["max_step"] * 2.0,
-                    3600.0,
-                ),
-            }
-            _, relaxed_past_states = propagate_trajectory(
-                initial_state=initial_state,
-                initial_epoch=epoch,
-                duration_seconds=-duration_seconds,
-                output_step=output_step,
-                include_j2=True,
-                include_moon=propagate_moon,
-                include_sun=propagate_sun,
-                include_srp=propagate_srp,
-                srp_coefficient=srp_coefficient,
-                **relaxed_settings,
-            )
-            _, relaxed_future_states = propagate_trajectory(
-                initial_state=initial_state,
-                initial_epoch=epoch,
-                duration_seconds=duration_seconds,
-                output_step=output_step,
-                include_j2=True,
-                include_moon=propagate_moon,
-                include_sun=propagate_sun,
-                include_srp=propagate_srp,
-                srp_coefficient=srp_coefficient,
-                **relaxed_settings,
-            )
-
-            # Backward propagation is returned from now toward the past.
-            # Reverse it and remove its duplicate t=0 sample before joining
-            # the future trajectory.
-            elapsed_times = np.concatenate(
-                (
-                    past_times[::-1][:-1],
-                    future_times,
-                )
-            )
-
-            states = np.vstack(
-                (
-                    past_states[::-1][:-1],
-                    future_states,
-                )
-            )
-            relaxed_states = np.vstack(
-                (
-                    relaxed_past_states[::-1][:-1],
-                    relaxed_future_states,
-                )
-            )
-
-            prediction_times = [
-                epoch
-                + timedelta(
-                    seconds=float(elapsed)
-                )
-                for elapsed in elapsed_times
-            ]
-
-            accelerations = {
-                "Moon": [],
-                "Sun β": [],
-                "SRP": [],
-                "Combined": [],
-            }
-            relaxed_accelerations = {
-                "Moon": [],
-                "Sun β": [],
-                "SRP": [],
-                "Combined": [],
-            }
-
-            for prediction_time, state, relaxed_state in zip(
-                prediction_times,
-                states,
-                relaxed_states,
-            ):
-                et = utc_to_et(
-                    prediction_time
-                )
-                r_moon = get_moon_position(
-                    et
-                )
-                r_sun = get_sun_position(et)
-                moon_acceleration = moon_perturbation(state[:3], r_moon)
-                sun_acceleration = sun_perturbation(state[:3], r_sun)
-                relaxed_moon = moon_perturbation(
-                    relaxed_state[:3], r_moon
-                )
-                relaxed_sun = sun_perturbation(
-                    relaxed_state[:3], r_sun
-                )
-                srp_acceleration = (
-                    solar_radiation_pressure(
-                        state[:3], r_sun, srp_coefficient
+            numerical_settings = self.get_numerical_settings()
+            srp_coefficient = None
+            srp_propagation_kwargs = {}
+            srp_prediction_note = ""
+            if propagate_srp:
+                if self.active_profile.is_demo_geo_baseline:
+                    srp_coefficient, srp_mode = (
+                        resolved_solar_pressure_coefficient(epoch)
                     )
-                    if propagate_srp
-                    else np.zeros(3, dtype=float)
-                )
-                relaxed_srp = (
-                    solar_radiation_pressure(
-                        relaxed_state[:3], r_sun, srp_coefficient
+                else:
+                    srp_propagation_kwargs, srp_coefficient = (
+                        self.profile_srp_adapter()
                     )
-                    if propagate_srp
-                    else np.zeros(3, dtype=float)
+                    srp_mode = "ACTIVE PROFILE"
+                srp_prediction_note = (
+                    f" SRP: {srp_mode}, CP {srp_coefficient:.7f}."
                 )
-                accelerations["Moon"].append(moon_acceleration)
-                accelerations["Sun β"].append(sun_acceleration)
-                accelerations["SRP"].append(srp_acceleration)
-                accelerations["Combined"].append(
-                    moon_acceleration + sun_acceleration + srp_acceleration
-                )
-                relaxed_accelerations["Moon"].append(relaxed_moon)
-                relaxed_accelerations["Sun β"].append(relaxed_sun)
-                relaxed_accelerations["SRP"].append(relaxed_srp)
-                relaxed_accelerations["Combined"].append(
-                    relaxed_moon + relaxed_sun + relaxed_srp
-                )
-
-            accelerations = {
-                source: np.asarray(values, dtype=float)
-                for source, values in accelerations.items()
-            }
-            relaxed_accelerations = {
-                source: np.asarray(values, dtype=float)
-                for source, values in relaxed_accelerations.items()
-            }
-
-            self.graph_prediction_epoch = epoch
-            self.graph_prediction_times = prediction_times
-            self.graph_prediction_values = {}
-            self.graph_prediction_uncertainty = {}
-            for source in requested_sources:
-                if source == "SRP" and not propagate_srp:
-                    continue
-                source_acceleration = accelerations[source]
-                relaxed_source = relaxed_accelerations[source]
-                source_values = {name: [] for name in PERTURBATION_PARAMETERS}
-                relaxed_values = {name: [] for name in PERTURBATION_PARAMETERS}
-                for state, acceleration in zip(states, source_acceleration):
-                    values = acceleration_components(acceleration, state)
-                    for name in PERTURBATION_PARAMETERS:
-                        source_values[name].append(values[name])
-                for state, acceleration in zip(
-                    relaxed_states, relaxed_source
-                ):
-                    values = acceleration_components(acceleration, state)
-                    for name in PERTURBATION_PARAMETERS:
-                        relaxed_values[name].append(values[name])
-                source_values = {
-                    name: np.asarray(values, dtype=float)
-                    for name, values in source_values.items()
-                }
-                relaxed_values = {
-                    name: np.asarray(values, dtype=float)
-                    for name, values in relaxed_values.items()
-                }
-                self.graph_prediction_values[source] = source_values
-                self.graph_prediction_uncertainty[source] = {
-                    name: np.abs(relaxed_values[name] - values)
-                    for name, values in source_values.items()
-                }
-
-            self.graph_view_offset = 0.0
-            self._graph_signature = None
-            self.safe_update_graph()
-
-            self.graph_prediction_status.setText(
-                f"{' / '.join(requested_sources)} prediction ready: "
-                f"{hours}h past + {hours}h future, "
-                f"{len(prediction_times)} points with numerical "
-                "sensitivity band. Scroll to explore."
-                f"{srp_prediction_note}"
-            )
-
-            self.statusBar().showMessage(
-                "Past and future perturbation prediction completed.",
-                6000,
-            )
-
         except Exception as error:
-            self.graph_prediction_epoch = None
-            self.graph_prediction_times = None
-            self.graph_prediction_values = None
-            self.graph_prediction_uncertainty = None
             self.graph_prediction_status.setText(
-                f"Prediction error: {error}"
+                f"Prediction setup error: {error}"
             )
             self.statusBar().showMessage(
-                f"Prediction error: {error}",
-                10000,
+                f"Prediction setup error: {error}", 10000
             )
+            return
 
-        finally:
-            self.predict_graph_button.setEnabled(
-                True
-            )
-            self.predict_graph_button.setText(
-                "PREDICT PAST + FUTURE"
-            )
+        parameters = {
+            "initial_state": initial_state,
+            "epoch": epoch,
+            "duration_seconds": float(hours * 3600),
+            "output_step": output_step,
+            "requested_sources": tuple(requested_sources),
+            "propagate_moon": propagate_moon,
+            "propagate_sun": propagate_sun,
+            "propagate_srp": propagate_srp,
+            "srp_coefficient": srp_coefficient,
+            "srp_area_m2": srp_propagation_kwargs.get("srp_area_m2"),
+            "srp_mass_kg": srp_propagation_kwargs.get("srp_mass_kg"),
+            "numerical_settings": numerical_settings,
+        }
+        self._graph_prediction_context = {
+            "hours": hours,
+            "requested_sources": tuple(requested_sources),
+            "srp_prediction_note": srp_prediction_note,
+        }
+        self._graph_prediction_timer_was_active = self.timer.isActive()
+        self.timer.stop()
+        self._set_graph_prediction_running(True)
+        self.graph_prediction_status.setText(
+            "Calculating perturbation prediction in the background... 0%"
+        )
 
-            if timer_was_active:
-                self.timer.start(
-                    1000
-                )
+        self.graph_prediction_thread = QThread(self)
+        self.graph_prediction_worker = GraphPredictionWorker(parameters)
+        self.graph_prediction_worker.moveToThread(
+            self.graph_prediction_thread
+        )
+        self.graph_prediction_thread.started.connect(
+            self.graph_prediction_worker.run
+        )
+        self.graph_prediction_worker.progress.connect(
+            self._update_graph_prediction_progress
+        )
+        self.graph_prediction_worker.completed.connect(
+            self.finish_graph_prediction
+        )
+        self.graph_prediction_worker.failed.connect(
+            self.fail_graph_prediction
+        )
+        self.graph_prediction_worker.cancelled.connect(
+            self.cancelled_graph_prediction
+        )
+        self.graph_prediction_worker.completed.connect(
+            self.graph_prediction_thread.quit
+        )
+        self.graph_prediction_worker.failed.connect(
+            self.graph_prediction_thread.quit
+        )
+        self.graph_prediction_worker.cancelled.connect(
+            self.graph_prediction_thread.quit
+        )
+        self.graph_prediction_thread.finished.connect(
+            self.graph_prediction_worker.deleteLater
+        )
+        self.graph_prediction_thread.finished.connect(
+            self.graph_prediction_thread.deleteLater
+        )
+        self.graph_prediction_thread.finished.connect(
+            self.cleanup_graph_prediction
+        )
+        self.graph_prediction_thread.start()
+
+    def _set_graph_prediction_running(self, running):
+
+        for control in (
+            self.time_range,
+            self.graph_force_moon,
+            self.graph_force_sun,
+            self.graph_force_srp,
+            self.graph_force_total,
+        ):
+            control.setEnabled(not running)
+        self.predict_graph_button.setEnabled(True)
+        self.predict_graph_button.setText(
+            "CANCEL PREDICTION" if running else "PREDICT PAST + FUTURE"
+        )
+
+    def _update_graph_prediction_progress(self, value):
+
+        self.graph_prediction_status.setText(
+            f"Calculating perturbation prediction in the background... "
+            f"{int(value)}%"
+        )
+
+    def finish_graph_prediction(self, result):
+
+        context = getattr(self, "_graph_prediction_context", {})
+        self.graph_prediction_epoch = result["epoch"]
+        self.graph_prediction_times = result["times"]
+        self.graph_prediction_values = result["values"]
+        self.graph_prediction_uncertainty = result["uncertainty"]
+        self.graph_view_offset = 0.0
+        self._graph_signature = None
+        self.safe_update_graph()
+
+        requested_sources = context.get("requested_sources", ())
+        hours = context.get("hours", 24)
+        source_label = " / ".join(requested_sources)
+        self.graph_prediction_status.setText(
+            f"{source_label} prediction ready: "
+            f"{hours}h past + {hours}h future, "
+            f"{result['point_count']} points with numerical sensitivity band. "
+            f"Scroll to explore."
+            f"{context.get('srp_prediction_note', '')}"
+        )
+        self.statusBar().showMessage(
+            "Past and future perturbation prediction completed.", 6000
+        )
+        self._set_graph_prediction_running(False)
+
+    def fail_graph_prediction(self, message):
+
+        self.graph_prediction_epoch = None
+        self.graph_prediction_times = None
+        self.graph_prediction_values = None
+        self.graph_prediction_uncertainty = None
+        self.graph_prediction_status.setText(
+            f"Prediction error: {message}"
+        )
+        self.statusBar().showMessage(
+            f"Prediction error: {message}", 10000
+        )
+        self._set_graph_prediction_running(False)
+
+    def cancelled_graph_prediction(self):
+
+        self.graph_prediction_status.setText(
+            "Perturbation prediction cancelled."
+        )
+        self.statusBar().showMessage(
+            "Perturbation prediction cancelled.", 5000
+        )
+        self._set_graph_prediction_running(False)
+
+    def cleanup_graph_prediction(self):
+
+        self.graph_prediction_worker = None
+        self.graph_prediction_thread = None
+        self._graph_prediction_context = None
+        if self._graph_prediction_timer_was_active:
+            self.timer.start(1000)
+        self._graph_prediction_timer_was_active = False
+
 
 
     def shift_graph_view(self, direction):
@@ -16826,6 +16880,14 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
                 3000
             )
 
+        if (
+            self.graph_prediction_thread is not None
+            and self.graph_prediction_thread.isRunning()
+        ):
+            self.graph_prediction_thread.requestInterruption()
+            self.graph_prediction_thread.quit()
+            self.graph_prediction_thread.wait(3000)
+
         if self.eclipse_thread is not None and self.eclipse_thread.isRunning():
             self.eclipse_thread.requestInterruption()
             self.eclipse_thread.quit()
@@ -16871,6 +16933,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
 
         active_jobs = (
             ("Propagation", self.propagation_thread),
+            ("Perturbation prediction", self.graph_prediction_thread),
             ("Eclipse", self.eclipse_thread),
             ("Reference Lab", self.reference_comparison_thread),
             ("Orbit Determination", self.orbit_determination_thread),
@@ -17469,7 +17532,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
     # ========================================================
 
     def update_graph(self):
-        if len(self.history_time) < 2:
+        if len(self.history_time) < 1:
             return
         if self.tabs.currentWidget() is not self.graph_page:
             return
@@ -17478,7 +17541,10 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
         hours = {"1 Hour": 1, "6 Hours": 6, "24 Hours": 24}.get(
             selected_range, 24
         )
-        now = self.get_analysis_utc()
+        # Anchor the x-axis to the active spacecraft state's epoch.  Private
+        # and imported profiles may not use wall-clock UTC; using wall-clock
+        # here displaced live markers from their matching prediction sample.
+        now = self.current_system_epoch or self.get_analysis_utc()
         cutoff = now - timedelta(hours=hours)
         parameter = self.parameter.currentText()
 
@@ -17501,7 +17567,7 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             for index, timestamp in enumerate(self.history_time)
             if timestamp >= cutoff
         ]
-        if len(filtered_indices) < 2:
+        if len(filtered_indices) < 1:
             return
         times = [self.history_time[index] for index in filtered_indices]
         scaled_by_source = {
@@ -17762,7 +17828,12 @@ class MainWindow(ProductFeatureMixin, QMainWindow):
             legend = self.graph.ax.legend(
                 loc="upper left",
                 frameon=True,
-                fontsize=9,
+                fontsize=8,
+                ncol=2,
+                labelspacing=0.35,
+                columnspacing=0.9,
+                handlelength=2.2,
+                handletextpad=0.5,
                 facecolor="#0F172A",
                 edgecolor="#334155",
             )

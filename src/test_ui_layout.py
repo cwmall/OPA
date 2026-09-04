@@ -7,7 +7,8 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QPoint
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QScrollArea
 
 from gui.main_window import (
@@ -66,6 +67,47 @@ class ResponsiveLayoutTests(unittest.TestCase):
             self.window.monitor_page_scroll.widget().minimumSizeHint().height(),
             self.window.monitor_page_scroll.viewport().height(),
         )
+
+    def test_perturbation_actions_fit_a_laptop_work_area(self):
+        self.window.resize(1366, 768)
+        self.window.tabs.setCurrentIndex(self.window.graph_tab_index)
+        self.application.processEvents()
+        self.assertTrue(self.window.graph_action_controls_host.isVisible())
+        self.assertLessEqual(self.window.graph.minimumHeight(), 160)
+        for button in self.window.graph_action_buttons:
+            self.assertGreaterEqual(
+                self.window.graph_action_controls_layout.indexOf(button), 0
+            )
+            self.assertTrue(self._contained(button, self.window.graph_page))
+        self.assertIsNone(self.window._containing_scroll_area(self.window.graph))
+        self.assertTrue(self._contained(self.window.graph, self.window.graph_page))
+
+    def test_perturbation_graph_has_reversible_graph_only_full_screen(self):
+        self.window.resize(1366, 768)
+        self.window.tabs.setCurrentIndex(self.window.graph_tab_index)
+        self.application.processEvents()
+        self.assertTrue(
+            self._contained(
+                self.window.graph_fullscreen_button,
+                self.window.graph,
+            )
+        )
+        QTest.mouseClick(
+            self.window.graph_fullscreen_button,
+            Qt.MouseButton.LeftButton,
+        )
+        self.application.processEvents()
+        self.assertTrue(self.window._graph_only_mode)
+        self.assertTrue(self.window.isFullScreen())
+        self.assertTrue(self.window.graph.isVisible())
+        self.assertFalse(self.window.hero_card.isVisible())
+        self.assertFalse(self.window.graph_controls_host.isVisible())
+
+        QTest.keyClick(self.window, Qt.Key.Key_Escape)
+        self.application.processEvents()
+        self.assertFalse(self.window._graph_only_mode)
+        self.assertTrue(self.window.hero_card.isVisible())
+        self.assertTrue(self.window.graph_controls_host.isVisible())
 
     def test_settings_pages_are_scrollable_and_panel_is_not_fixed(self):
         self.window.resize(640, 360)

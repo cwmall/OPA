@@ -3,7 +3,7 @@
 ## Automated gate
 
 - [x] `python scripts/check_public_release.py` passes with the external private denylist.
-- [x] Full unit/GUI suite passes offscreen (123 tests on the release workstation).
+- [x] Full unit/GUI suite passes offscreen (127 tests on the release workstation).
 - [x] DPI smoke matrix passes at 100%, 125%, 150%, and 200%.
 - [x] A tracked-files-only fresh copy installs into a new virtual environment and launches.
 - [x] No file is 100 MB or larger.

@@ -94,6 +94,7 @@ class ThemeTests(unittest.TestCase):
                 "QCalendarWidget",
                 "QToolTip",
                 "QStatusBar",
+                "QPushButton#graphOverlayAction",
             ):
                 self.assertIn(selector, stylesheet)
             for asset in (

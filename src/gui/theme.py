@@ -575,6 +575,14 @@ def _normal_application_stylesheet(dropdown_arrow_path=""):
         QPushButton#primaryAction:hover, QPushButton#settingsPrimaryButton:hover {{
             background: {PRIMARY_BUTTON_HOVER}; border-color: {PRIMARY_BUTTON_HOVER};
         }}
+        QPushButton#graphOverlayAction {{
+            background: #0F172A; color: #F8FAFC;
+            border: 1px solid {ACCENT}; border-radius: 4px;
+            padding: 5px 10px; font-size: 8pt; font-weight: 700;
+        }}
+        QPushButton#graphOverlayAction:hover {{
+            background: {PRIMARY_BUTTON}; border-color: {ACCENT_HOVER};
+        }}
         QPushButton#ghostAction {{ background: transparent; }}
         QFrame#heroCard QPushButton#ghostAction {{
             color: {HERO_CONTROL_TEXT}; background: {HERO_CONTROL_SURFACE};
@@ -971,6 +979,13 @@ def _retro_application_stylesheet(dropdown_arrow_path=""):
             border-color: {BEVEL_HIGHLIGHT} {BEVEL_DARK} {BEVEL_DARK} {BEVEL_HIGHLIGHT};
         }}
         QPushButton#primaryAction:hover, QPushButton#settingsPrimaryButton:hover {{ background: {SURFACE_HOVER}; }}
+        QPushButton#graphOverlayAction {{
+            background: {BACKGROUND}; color: {TEXT_PRIMARY};
+            border-style: solid; border-width: 2px;
+            border-color: {BEVEL_HIGHLIGHT} {BEVEL_DARK} {BEVEL_DARK} {BEVEL_HIGHLIGHT};
+            border-radius: 0; padding: 3px 8px; font-size: 8pt; font-weight: 700;
+        }}
+        QPushButton#graphOverlayAction:hover {{ background: {SURFACE_HOVER}; }}
         QPushButton#ghostAction {{ background: {BACKGROUND}; }}
         QPushButton#dangerAction {{ color: {STATUS_ERROR}; background: {BACKGROUND}; }}
         QPushButton:disabled {{
